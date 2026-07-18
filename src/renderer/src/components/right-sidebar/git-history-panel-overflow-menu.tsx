@@ -1,0 +1,71 @@
+import type React from 'react'
+import { List, ListTree, MoreHorizontal } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
+import { translate } from '@/i18n/i18n'
+import type { SourceControlViewMode } from '../../../../shared/types'
+
+// Why: the commit-files layout is a low-frequency action that only affects
+// expanded commit rows, so it lives in an overflow menu like the changes
+// header's layout control (and VS Code) instead of a permanent header button.
+export function GitHistoryPanelOverflowMenu({
+  commitFilesViewMode,
+  viewModeToggleDisabled,
+  onToggleViewMode
+}: {
+  commitFilesViewMode: SourceControlViewMode
+  viewModeToggleDisabled: boolean
+  onToggleViewMode: () => void
+}): React.JSX.Element {
+  const viewModeLabel =
+    commitFilesViewMode === 'tree'
+      ? translate('auto.components.right.sidebar.SourceControl.a91f8e2b01', 'View as list')
+      : translate('auto.components.right.sidebar.SourceControl.b82e9f3c12', 'View as tree')
+
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="my-auto inline-flex shrink-0">
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="h-auto w-auto p-0.5 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent [&_svg]:size-3"
+                aria-label={translate(
+                  'auto.components.right.sidebar.GitHistoryPanel.5e4f2a9c81',
+                  'More commit history actions'
+                )}
+              >
+                <MoreHorizontal className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={6}>
+          {translate(
+            'auto.components.right.sidebar.GitHistoryPanel.5e4f2a9c81',
+            'More commit history actions'
+          )}
+        </TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end" className="min-w-[180px]">
+        <DropdownMenuItem disabled={viewModeToggleDisabled} onSelect={onToggleViewMode}>
+          {commitFilesViewMode === 'tree' ? (
+            <List className="size-3.5" />
+          ) : (
+            <ListTree className="size-3.5" />
+          )}
+          {viewModeLabel}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
