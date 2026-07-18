@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { act } from 'react'
+import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -68,6 +68,31 @@ vi.mock('@/store/selectors', () => ({
 
 vi.mock('@/components/confirmation-dialog', () => ({
   useConfirmationDialog: () => vi.fn().mockResolvedValue(true)
+}))
+
+vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenu: ({ children }: { children: ReactNode }) => <>{children}</>,
+  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
+  DropdownMenuContent: ({ children }: { children: ReactNode }) => <>{children}</>,
+  DropdownMenuItem: ({
+    children,
+    disabled,
+    onSelect
+  }: {
+    children: ReactNode
+    disabled?: boolean
+    onSelect?: () => void
+  }) => (
+    <button type="button" disabled={disabled} onClick={() => onSelect?.()}>
+      {children}
+    </button>
+  ),
+  DropdownMenuCheckboxItem: ({ children }: { children: ReactNode }) => <>{children}</>,
+  DropdownMenuLabel: ({ children }: { children: ReactNode }) => <>{children}</>,
+  DropdownMenuRadioGroup: ({ children }: { children: ReactNode }) => <>{children}</>,
+  DropdownMenuRadioItem: ({ children }: { children: ReactNode }) => <>{children}</>,
+  DropdownMenuSeparator: () => <hr />,
+  DropdownMenuShortcut: ({ children }: { children: ReactNode }) => <>{children}</>
 }))
 
 vi.mock('./git-status-refresh', () => ({
@@ -427,4 +452,40 @@ describe('SourceControl virtualized changed-files list', () => {
     expect(mounted).toBeGreaterThan(0)
     expect(mounted).toBeLessThanOrEqual(MAX_MOUNTED_ROWS)
   })
+})
+
+describe('SourceControl commit file view mode', () => {
+  it.each([
+    {
+      changesMode: 'tree',
+      commitMode: 'list',
+      changesLabel: 'View as list',
+      commitLabel: 'View as tree'
+    },
+    {
+      changesMode: 'list',
+      commitMode: 'tree',
+      changesLabel: 'View as tree',
+      commitLabel: 'View as list'
+    }
+  ] as const)(
+    'keeps $commitMode commit files independent from the $changesMode changes layout',
+    ({ changesMode, commitMode, changesLabel, commitLabel }) => {
+      resetState({
+        settings: {
+          sourceControlViewMode: changesMode,
+          sourceControlCommitViewMode: commitMode
+        }
+      })
+
+      renderSourceControl()
+
+      // Both overflow menus render their layout action: the labels must reflect
+      // each surface's own setting, not leak into one another.
+      const labels = Array.from(container.querySelectorAll('button'))
+        .map((button) => button.textContent?.trim())
+        .filter((text) => text === 'View as list' || text === 'View as tree')
+      expect(labels.sort()).toEqual([changesLabel, commitLabel].sort())
+    }
+  )
 })

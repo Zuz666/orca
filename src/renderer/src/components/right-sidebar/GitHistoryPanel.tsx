@@ -5,13 +5,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import type { GitHistoryItem, GitHistoryResult } from '../../../../shared/git-history'
-import type { GitBranchChangeEntry } from '../../../../shared/types'
+import type { GitBranchChangeEntry, SourceControlViewMode } from '../../../../shared/types'
 import {
   buildDefaultGitHistoryColorMap,
   buildGitHistoryViewModels
 } from '../../../../shared/git-history-graph'
 import { GitHistoryRow } from './GitHistoryRow'
-import { GitHistoryCommitFiles, type GitHistoryCommitFilesState } from './GitHistoryCommitFiles'
+import { GitHistoryCommitFiles } from './GitHistoryCommitFiles'
+import { GitHistoryPanelOverflowMenu } from './git-history-panel-overflow-menu'
+import { useGitHistoryCommitFiles } from './use-git-history-commit-files'
 import {
   GitHistoryCommitContextMenu,
   type GitHistoryCommitAction
@@ -48,7 +50,9 @@ export function GitHistoryPanel({
   onOpenCommit,
   onLoadCommitFiles,
   onOpenCommitFile,
-  onCommitAction
+  onCommitAction,
+  commitFilesViewMode,
+  onCommitFilesViewModeChange
 }: {
   state: GitHistoryPanelState
   collapsed: boolean
@@ -62,6 +66,8 @@ export function GitHistoryPanel({
     event?: SourceControlRowOpenEvent
   ) => void
   onCommitAction?: (action: GitHistoryCommitAction, item: GitHistoryItem) => void
+  commitFilesViewMode: SourceControlViewMode
+  onCommitFilesViewModeChange?: (viewMode: SourceControlViewMode) => void
 }): React.JSX.Element | null {
   const result = state.result
   const viewModels = useMemo(() => {
@@ -85,61 +91,19 @@ export function GitHistoryPanel({
   const [panelHeight, setPanelHeight] = useState(DEFAULT_GIT_HISTORY_PANEL_HEIGHT)
   const resizeSessionRef = useRef<GitHistoryResizeSession | null>(null)
 
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
-  const [filesByCommit, setFilesByCommit] = useState<Record<string, GitHistoryCommitFilesState>>({})
-  // Tracks commits whose files have been loaded (or are in flight) so re-expanding
-  // never refetches; an entry is cleared on error to allow a retry.
-  const loadedCommitsRef = useRef<Set<string>>(new Set())
+  const {
+    expanded,
+    filesByCommit,
+    collapsedCommitTreeDirs,
+    resetCommitFiles,
+    handleToggleExpand,
+    handleToggleCommitTreeDirectory
+  } = useGitHistoryCommitFiles({ result, stateStatus: state.status, onLoadCommitFiles })
 
-  // A new history result can reorder or replace commits, so drop any expansion
-  // and cached file lists rather than risk showing stale files under a row.
-  useEffect(() => {
-    setExpanded(new Set())
-    setFilesByCommit({})
-    loadedCommitsRef.current = new Set()
-  }, [result])
-
-  const handleToggleExpand = useCallback(
-    (item: GitHistoryItem): void => {
-      const id = item.id
-      const willExpand = !expanded.has(id)
-      setExpanded((prev) => {
-        const next = new Set(prev)
-        if (willExpand) {
-          next.add(id)
-        } else {
-          next.delete(id)
-        }
-        return next
-      })
-      if (!willExpand || !onLoadCommitFiles || loadedCommitsRef.current.has(id)) {
-        return
-      }
-      loadedCommitsRef.current.add(id)
-      setFilesByCommit((prev) => ({ ...prev, [id]: { status: 'loading' } }))
-      onLoadCommitFiles(item)
-        .then((entries) => {
-          setFilesByCommit((prev) => ({ ...prev, [id]: { status: 'ready', entries } }))
-        })
-        .catch((error: unknown) => {
-          loadedCommitsRef.current.delete(id)
-          setFilesByCommit((prev) => ({
-            ...prev,
-            [id]: {
-              status: 'error',
-              error:
-                error instanceof Error
-                  ? error.message
-                  : translate(
-                      'auto.components.right.sidebar.GitHistoryPanel.6d1e0a7c3b',
-                      'Failed to load commit files'
-                    )
-            }
-          }))
-        })
-    },
-    [expanded, onLoadCommitFiles]
-  )
+  const handleRefresh = useCallback((): void => {
+    resetCommitFiles()
+    onRefresh()
+  }, [onRefresh, resetCommitFiles])
 
   const stopResize = useCallback((): void => {
     const session = resizeSessionRef.current
@@ -274,6 +238,13 @@ export function GitHistoryPanel({
               )}
             </TooltipContent>
           </Tooltip>
+          <GitHistoryPanelOverflowMenu
+            commitFilesViewMode={commitFilesViewMode}
+            viewModeToggleDisabled={!onCommitFilesViewModeChange}
+            onToggleViewMode={() =>
+              onCommitFilesViewModeChange?.(commitFilesViewMode === 'list' ? 'tree' : 'list')
+            }
+          />
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -287,7 +258,7 @@ export function GitHistoryPanel({
                     onToggle()
                     return
                   }
-                  onRefresh()
+                  handleRefresh()
                 }}
                 aria-label={translate(
                   'auto.components.right.sidebar.GitHistoryPanel.d0fb0f4bf2',
@@ -369,9 +340,13 @@ export function GitHistoryPanel({
                 )}
                 {isExpanded && (
                   <GitHistoryCommitFiles
+                    commitId={item.id}
+                    viewMode={commitFilesViewMode}
                     state={filesByCommit[item.id] ?? { status: 'loading' }}
                     author={item.author}
                     timestamp={item.timestamp}
+                    collapsedTreeDirs={collapsedCommitTreeDirs}
+                    onToggleTreeDirectory={handleToggleCommitTreeDirectory}
                     onOpenFile={(entry, event) => onOpenCommitFile?.(item, entry, event)}
                     onOpenAll={onOpenCommit ? () => onOpenCommit(item) : undefined}
                   />

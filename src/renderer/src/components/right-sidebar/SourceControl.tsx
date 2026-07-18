@@ -94,6 +94,9 @@ import {
   compactSourceControlTree,
   flattenSourceControlTree,
   namespaceSourceControlTreeDirectoryKeys,
+  SOURCE_CONTROL_TREE_DIRECTORY_PADDING_PX,
+  SOURCE_CONTROL_TREE_FILE_PADDING_PX,
+  SOURCE_CONTROL_TREE_INDENT_PX,
   type SourceControlTreeNode
 } from './source-control-tree'
 import {
@@ -1045,6 +1048,10 @@ function SourceControlInner(): React.JSX.Element {
     settings?.sourceControlViewMode
   )
   const sourceControlViewMode = persistedSourceControlViewMode
+  // Commit files persist separately so the upper changes-layout control cannot alter them.
+  const sourceControlCommitViewMode = normalizeSourceControlViewMode(
+    settings?.sourceControlCommitViewMode
+  )
   const sourceControlGroupOrder = resolveSourceControlGroupOrder(settings?.sourceControlGroupOrder)
   const [collapsedTreeDirs, setCollapsedTreeDirs] = useState<Set<string>>(new Set())
   const [baseRefDialogOpen, setBaseRefDialogOpen] = useState(false)
@@ -4470,6 +4477,16 @@ function SourceControlInner(): React.JSX.Element {
     })
   }, [settings, sourceControlViewMode, updateSettings])
 
+  const handleCommitFilesViewModeChange = useCallback(
+    (viewMode: SourceControlViewMode): void => {
+      if (!settings) {
+        return
+      }
+      updateSettings({ sourceControlCommitViewMode: viewMode })
+    },
+    [settings, updateSettings]
+  )
+
   // Clear selection on worktree or tab change
   useEffect(() => {
     clearSelection()
@@ -6166,6 +6183,8 @@ function SourceControlInner(): React.JSX.Element {
                 state={gitHistoryState}
                 collapsed={collapsedSections.has('history')}
                 onToggle={() => toggleSection('history')}
+                commitFilesViewMode={sourceControlCommitViewMode}
+                onCommitFilesViewModeChange={settings ? handleCommitFilesViewModeChange : undefined}
                 onRefresh={() => void refreshGitHistory()}
                 onOpenCommit={(item) => void openHistoryCommitDiff(item)}
                 onLoadCommitFiles={loadCommitFiles}
@@ -7610,7 +7629,10 @@ function SourceControlTreeDirectoryRow({
         aria-expanded={!isCollapsed}
       >
         <ChevronDown
-          className={cn('size-3 shrink-0 transition-transform', isCollapsed && '-rotate-90')}
+          className={cn(
+            'size-3 shrink-0 transition-transform motion-reduce:transition-none',
+            isCollapsed && '-rotate-90'
+          )}
         />
         {isCollapsed ? (
           <Folder className="size-3 shrink-0" />
@@ -7702,7 +7724,10 @@ function SourceControlBranchTreeDirectoryRow({
         aria-expanded={!isCollapsed}
       >
         <ChevronDown
-          className={cn('size-3 shrink-0 transition-transform', isCollapsed && '-rotate-90')}
+          className={cn(
+            'size-3 shrink-0 transition-transform motion-reduce:transition-none',
+            isCollapsed && '-rotate-90'
+          )}
         />
         {isCollapsed ? (
           <Folder className="size-3 shrink-0" />
