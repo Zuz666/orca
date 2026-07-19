@@ -407,7 +407,48 @@ describe('GitHistoryPanel', () => {
     expect(files.textContent).toContain('docs')
   })
 
-  it('keeps the selected commit-files tree mode through a history result replacement', async () => {
+  it('exposes the full commit file path through a tooltip instead of a native title', async () => {
+    const item = makeHistoryItem()
+    const entry = makeEntry({ path: 'src/components/deep/TooltipTarget.tsx' })
+
+    renderPanel({
+      state: { status: 'ready', result: makeHistoryResult([item]) },
+      onLoadCommitFiles: vi.fn().mockResolvedValue([entry]),
+      onOpenCommitFile: vi.fn()
+    })
+    await expandCommit(item)
+
+    const file = fileRows(commitFiles(item))[0]
+    expect(file?.hasAttribute('title')).toBe(false)
+    expect(commitFiles(item).textContent).toContain(entry.path)
+  })
+
+  it('uses the full highlighted directory row as the collapse control', async () => {
+    const item = makeHistoryItem()
+    const entries = [
+      makeEntry({ path: 'src/shared/one.ts' }),
+      makeEntry({ path: 'src/shared/two.ts' })
+    ]
+
+    renderPanel({
+      state: { status: 'ready', result: makeHistoryResult([item]) },
+      initialCommitFilesViewMode: 'tree',
+      onLoadCommitFiles: vi.fn().mockResolvedValue(entries),
+      onOpenCommitFile: vi.fn()
+    })
+    await expandCommit(item)
+
+    const directory = directoryRows(commitFiles(item))[0]
+    expect(directory?.tagName).toBe('BUTTON')
+    expect(directory?.getAttribute('aria-expanded')).toBe('true')
+    act(() => {
+      directory?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(directory?.getAttribute('aria-expanded')).toBe('false')
+    expect(fileRows(commitFiles(item))).toHaveLength(0)
+  })
+
+  it('resets expansion, cache, and directory state when the history result identity changes', async () => {
     const item = makeHistoryItem()
     const entries = [
       makeEntry({ path: 'packages/app/src/index.ts' }),
@@ -426,6 +467,17 @@ describe('GitHistoryPanel', () => {
     await expandCommit(item)
 
     expect(directoryRows(commitFiles(item))).toHaveLength(4)
+    const collapsedDirectory = directoryRows(commitFiles(item)).find(
+      (directory) => directory.dataset.treePath === 'packages/app'
+    )
+    const collapsedDirectoryToggle = collapsedDirectory
+    if (!collapsedDirectoryToggle) {
+      throw new Error('Missing packages/app directory toggle')
+    }
+    act(() => {
+      collapsedDirectoryToggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(fileRows(commitFiles(item)).length).toBeLessThan(entries.length)
 
     renderPanel({
       state: { status: 'ready', result: makeHistoryResult([item]) },
@@ -438,6 +490,11 @@ describe('GitHistoryPanel', () => {
     expect(onLoadCommitFiles).toHaveBeenCalledTimes(2)
     expect(directoryRows(commitFiles(item))).toHaveLength(4)
     expect(fileRows(commitFiles(item))).toHaveLength(entries.length)
+    expect(
+      directoryRows(commitFiles(item))
+        .find((directory) => directory.dataset.treePath === 'packages/app')
+        ?.getAttribute('aria-expanded')
+    ).toBe('true')
   })
 
   it('routes a tree file click to its matching commit, entry, and row event', async () => {
@@ -467,7 +524,9 @@ describe('GitHistoryPanel', () => {
     await expandCommit(first)
     await expandCommit(second)
 
-    const file = fileRows(commitFiles(second)).find((element) => element.title === secondEntry.path)
+    const file = fileRows(commitFiles(second)).find(
+      (element) => element.dataset.filePath === secondEntry.path
+    )
     if (!file) {
       throw new Error(`Missing file row for ${secondEntry.path}`)
     }
@@ -488,55 +547,41 @@ describe('GitHistoryPanel', () => {
     })
   })
 
-  it('discards in-flight commit files when the retained history starts refreshing', async () => {
+  it('preserves expanded files and directory state while a retained result refreshes or errors', async () => {
     const item = makeHistoryItem()
     const result = makeHistoryResult([item])
-    const staleEntry = makeEntry({ path: 'src/stale.ts' })
-    const refreshedEntry = makeEntry({ path: 'src/refreshed.ts' })
-    let resolveFirstLoad: ((entries: GitBranchChangeEntry[]) => void) | undefined
-    const firstLoad = new Promise<GitBranchChangeEntry[]>((resolve) => {
-      resolveFirstLoad = resolve
-    })
-    const onLoadCommitFiles = vi
-      .fn()
-      .mockReturnValueOnce(firstLoad)
-      .mockResolvedValueOnce([refreshedEntry])
+    const entries = [
+      makeEntry({ path: 'src/shared/one.ts' }),
+      makeEntry({ path: 'src/shared/two.ts' })
+    ]
+    const onLoadCommitFiles = vi.fn().mockResolvedValue(entries)
 
     renderPanel({
       state: { status: 'ready', result },
       onLoadCommitFiles,
       onOpenCommitFile: vi.fn()
     })
+    selectCommitFilesView('View as tree')
     await expandCommit(item)
-    expect(commitFiles(item).textContent).toContain('Loading files')
-
-    renderPanel({
-      state: { status: 'refreshing', result },
-      onLoadCommitFiles,
-      onOpenCommitFile: vi.fn()
-    })
-    expect(container.querySelector('[data-testid="git-history-commit-files"]')).toBeNull()
-
-    renderPanel({
-      state: { status: 'ready', result },
-      onLoadCommitFiles,
-      onOpenCommitFile: vi.fn()
-    })
-    await expandCommit(item)
-
-    expect(onLoadCommitFiles).toHaveBeenCalledTimes(2)
-    expect(commitFiles(item).textContent).toContain('refreshed.ts')
-
-    const resolveStaleLoad = resolveFirstLoad
-    if (!resolveStaleLoad) {
-      throw new Error('Missing in-flight commit file loader')
+    const directoryToggle = directoryRows(commitFiles(item))[0]
+    if (!directoryToggle) {
+      throw new Error('Missing commit directory toggle')
     }
-    await act(async () => {
-      resolveStaleLoad([staleEntry])
-      await Promise.resolve()
+    act(() => {
+      directoryToggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
-    expect(commitFiles(item).textContent).toContain('refreshed.ts')
-    expect(commitFiles(item).textContent).not.toContain('stale.ts')
+    expect(fileRows(commitFiles(item))).toHaveLength(0)
+
+    for (const state of [
+      { status: 'refreshing' as const, result },
+      { status: 'error' as const, result, error: 'Refresh failed' }
+    ]) {
+      renderPanel({ state, onLoadCommitFiles, onOpenCommitFile: vi.fn() })
+
+      expect(fileRows(commitFiles(item))).toHaveLength(0)
+      expect(directoryRows(commitFiles(item))[0]?.getAttribute('aria-expanded')).toBe('false')
+      expect(onLoadCommitFiles).toHaveBeenCalledTimes(1)
+    }
   })
 
   it.each(['resolve', 'reject'] as const)(
@@ -624,7 +669,7 @@ describe('GitHistoryPanel', () => {
     expect(fileRows(firstFiles)).toHaveLength(entries.length)
     expect(fileRows(secondFiles)).toHaveLength(entries.length)
 
-    const toggle = firstDirectory.querySelector<HTMLButtonElement>('button')
+    const toggle = firstDirectory
     if (!toggle) {
       throw new Error('Missing directory toggle')
     }
@@ -653,12 +698,11 @@ describe('GitHistoryPanel', () => {
     await expandCommit(item)
 
     const directory = directoryRows(commitFiles(item))[0]
-    const toggle = directory?.querySelector('button')
-    if (!directory || !toggle) {
+    if (!directory) {
       throw new Error('Missing shared source directory')
     }
     act(() => {
-      toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      directory.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
     expect(fileRows(commitFiles(item))).toHaveLength(0)
 
@@ -668,9 +712,7 @@ describe('GitHistoryPanel', () => {
     await expandCommit(item)
     expect(onLoadCommitFiles).toHaveBeenCalledTimes(1)
     expect(fileRows(commitFiles(item))).toHaveLength(0)
-    expect(
-      directoryRows(commitFiles(item))[0]?.querySelector('button')?.getAttribute('aria-expanded')
-    ).toBe('false')
+    expect(directoryRows(commitFiles(item))[0]?.getAttribute('aria-expanded')).toBe('false')
   })
 
   // Why: this persisted preference applies to future commits, so empty history
