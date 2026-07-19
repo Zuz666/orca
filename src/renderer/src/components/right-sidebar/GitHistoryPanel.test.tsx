@@ -97,6 +97,7 @@ afterEach(() => {
 type RenderPanelOptions = {
   state?: GitHistoryPanelState
   initialCommitFilesViewMode?: 'list' | 'tree'
+  onRefresh?: () => void | Promise<void>
   onLoadCommitFiles?: (item: GitHistoryItem) => Promise<GitBranchChangeEntry[]>
   onOpenCommitFile?: (
     item: GitHistoryItem,
@@ -114,6 +115,7 @@ type RenderPanelOptions = {
 function PanelHarness({
   state = DEFAULT_PANEL_STATE,
   initialCommitFilesViewMode = 'list',
+  onRefresh = vi.fn(),
   onLoadCommitFiles,
   onOpenCommitFile
 }: RenderPanelOptions): ReactNode {
@@ -126,7 +128,7 @@ function PanelHarness({
       commitFilesViewMode={commitFilesViewMode}
       onCommitFilesViewModeChange={setCommitFilesViewMode}
       onToggle={vi.fn()}
-      onRefresh={vi.fn()}
+      onRefresh={onRefresh}
       onOpenCommit={vi.fn()}
       onLoadCommitFiles={onLoadCommitFiles}
       onOpenCommitFile={onOpenCommitFile}
@@ -414,6 +416,54 @@ describe('GitHistoryPanel', () => {
     expect(commitFiles(item).textContent).toContain('refreshed.ts')
     expect(commitFiles(item).textContent).not.toContain('stale.ts')
   })
+
+  it.each(['resolve', 'reject'] as const)(
+    'ignores a stale commit-file %s after replacing the history result',
+    async (outcome) => {
+      const item = makeHistoryItem()
+      const staleEntry = makeEntry({ path: 'src/stale.ts' })
+      const currentEntry = makeEntry({ path: 'src/current.ts' })
+      let settleStaleLoad: (() => void) | undefined
+      const staleLoad = new Promise<GitBranchChangeEntry[]>((resolve, reject) => {
+        settleStaleLoad =
+          outcome === 'resolve' ? () => resolve([staleEntry]) : () => reject(new Error('stale'))
+      })
+      const onLoadCommitFiles = vi
+        .fn()
+        .mockReturnValueOnce(staleLoad)
+        .mockResolvedValueOnce([currentEntry])
+
+      renderPanel({
+        state: { status: 'ready', result: makeHistoryResult([item]) },
+        onLoadCommitFiles,
+        onOpenCommitFile: vi.fn()
+      })
+      await expandCommit(item)
+      expect(commitFiles(item).textContent).toContain('Loading files')
+
+      renderPanel({
+        state: { status: 'ready', result: makeHistoryResult([item]) },
+        onLoadCommitFiles,
+        onOpenCommitFile: vi.fn()
+      })
+      await expandCommit(item)
+      expect(commitFiles(item).textContent).toContain('current.ts')
+
+      const settleLoader = settleStaleLoad
+      if (!settleLoader) {
+        throw new Error('Missing stale commit-file loader')
+      }
+      await act(async () => {
+        settleLoader()
+        await Promise.resolve()
+      })
+
+      expect(onLoadCommitFiles).toHaveBeenCalledTimes(2)
+      expect(commitFiles(item).textContent).toContain('current.ts')
+      expect(commitFiles(item).textContent).not.toContain('stale.ts')
+      expect(commitFiles(item).textContent).not.toContain('stale')
+    }
+  )
 
   it('keeps same-path directory collapse state isolated between expanded commits', async () => {
     const first = makeHistoryItem({

@@ -1,34 +1,25 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { GitHistoryItem, GitHistoryResult } from '../../../../shared/git-history'
 import type { GitBranchChangeEntry } from '../../../../shared/types'
 import { translate } from '@/i18n/i18n'
 import type { GitHistoryCommitFilesState } from './GitHistoryCommitFiles'
 
-type GitHistoryPanelStatus = 'idle' | 'loading' | 'refreshing' | 'ready' | 'error'
-
-// Owns expansion, lazy file loads, and tree-collapse state for the commit rows
-// of the Git History panel.
+// Why: one owner coordinates expansion, cached loads, and directory state across row unmounts.
 export function useGitHistoryCommitFiles({
   result,
-  stateStatus,
   onLoadCommitFiles
 }: {
   result: GitHistoryResult | undefined
-  stateStatus: GitHistoryPanelStatus
   onLoadCommitFiles?: (item: GitHistoryItem) => Promise<GitBranchChangeEntry[]>
 }): {
   expanded: ReadonlySet<string>
   filesByCommit: Record<string, GitHistoryCommitFilesState>
   collapsedCommitTreeDirs: ReadonlySet<string>
-  resetCommitFiles: () => void
   handleToggleExpand: (item: GitHistoryItem) => void
   handleToggleCommitTreeDirectory: (key: string) => void
 } {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [filesByCommit, setFilesByCommit] = useState<Record<string, GitHistoryCommitFilesState>>({})
-  // Lives in the panel hook, not in GitHistoryCommitFiles: that component unmounts
-  // when its commit row collapses while the cached file list survives, so the
-  // tree's collapse state must survive too. Keys are namespaced per commit.
   const [collapsedCommitTreeDirs, setCollapsedCommitTreeDirs] = useState<ReadonlySet<string>>(
     () => new Set()
   )
@@ -39,26 +30,20 @@ export function useGitHistoryCommitFiles({
   // cannot write stale commit files back into the newly rendered history.
   const commitFilesGenerationRef = useRef(0)
 
-  const resetCommitFiles = useCallback((): void => {
+  const previousResultRef = useRef(result)
+
+  useLayoutEffect(() => {
+    if (previousResultRef.current === result) {
+      return
+    }
+    // Why: invalidate before stale loader microtasks can write into the replacement result.
+    previousResultRef.current = result
     commitFilesGenerationRef.current += 1
     setExpanded(new Set())
     setFilesByCommit({})
     setCollapsedCommitTreeDirs(new Set())
     loadedCommitsRef.current = new Set()
-  }, [])
-
-  // A new history result can reorder or replace commits, so drop any expansion
-  // and cached file lists rather than risk showing stale files under a row.
-  useEffect(() => {
-    resetCommitFiles()
-  }, [resetCommitFiles, result])
-
-  // Refreshing keeps the prior graph visible while its replacement is loading.
-  useEffect(() => {
-    if (stateStatus === 'refreshing') {
-      resetCommitFiles()
-    }
-  }, [resetCommitFiles, stateStatus])
+  }, [result])
 
   const handleToggleExpand = useCallback(
     (item: GitHistoryItem): void => {
@@ -125,7 +110,6 @@ export function useGitHistoryCommitFiles({
     expanded,
     filesByCommit,
     collapsedCommitTreeDirs,
-    resetCommitFiles,
     handleToggleExpand,
     handleToggleCommitTreeDirectory
   }

@@ -57,7 +57,7 @@ export function GitHistoryPanel({
   state: GitHistoryPanelState
   collapsed: boolean
   onToggle: () => void
-  onRefresh: () => void
+  onRefresh: () => void | Promise<void>
   onOpenCommit?: (item: GitHistoryItem) => void
   onLoadCommitFiles?: (item: GitHistoryItem) => Promise<GitBranchChangeEntry[]>
   onOpenCommitFile?: (
@@ -90,20 +90,35 @@ export function GitHistoryPanel({
   const count = result?.items.length ?? 0
   const [panelHeight, setPanelHeight] = useState(DEFAULT_GIT_HISTORY_PANEL_HEIGHT)
   const resizeSessionRef = useRef<GitHistoryResizeSession | null>(null)
+  const [refreshPending, setRefreshPending] = useState(false)
+  const refreshPendingRef = useRef(false)
+  const refreshBlocked = loading || refreshPending
 
   const {
     expanded,
     filesByCommit,
     collapsedCommitTreeDirs,
-    resetCommitFiles,
     handleToggleExpand,
     handleToggleCommitTreeDirectory
-  } = useGitHistoryCommitFiles({ result, stateStatus: state.status, onLoadCommitFiles })
+  } = useGitHistoryCommitFiles({ result, onLoadCommitFiles })
 
   const handleRefresh = useCallback((): void => {
-    resetCommitFiles()
-    onRefresh()
-  }, [onRefresh, resetCommitFiles])
+    if (loading || refreshPendingRef.current) {
+      return
+    }
+    refreshPendingRef.current = true
+    setRefreshPending(true)
+    const releaseRefresh = (): void => {
+      refreshPendingRef.current = false
+      setRefreshPending(false)
+    }
+    try {
+      void Promise.resolve(onRefresh()).then(releaseRefresh, releaseRefresh)
+    } catch (error) {
+      releaseRefresh()
+      throw error
+    }
+  }, [loading, onRefresh])
 
   const stopResize = useCallback((): void => {
     const session = resizeSessionRef.current
@@ -251,7 +266,11 @@ export function GitHistoryPanel({
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                className="my-auto h-auto w-auto p-0.5 text-muted-foreground hover:bg-transparent hover:text-muted-foreground dark:hover:bg-transparent [&_svg]:size-3"
+                aria-disabled={!collapsed && refreshBlocked ? true : undefined}
+                className={cn(
+                  'my-auto h-auto w-auto p-0.5 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent [&_svg]:size-3',
+                  !collapsed && refreshBlocked && 'cursor-not-allowed opacity-50'
+                )}
                 onClick={(event) => {
                   event.stopPropagation()
                   if (collapsed) {
@@ -265,7 +284,7 @@ export function GitHistoryPanel({
                   'Refresh commits'
                 )}
               >
-                <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
+                <RefreshCw className={cn('size-3.5', refreshBlocked && 'animate-spin')} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={6}>
