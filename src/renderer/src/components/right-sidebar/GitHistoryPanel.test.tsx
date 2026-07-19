@@ -154,26 +154,46 @@ function commitRow(item: GitHistoryItem): HTMLButtonElement {
   return row
 }
 
-function commitFiles(item: GitHistoryItem): HTMLElement {
-  const files = container.querySelector<HTMLElement>(
-    `[data-testid="git-history-commit-files"][data-commit-id="${item.id}"]`
-  )
-  if (!files) {
+type CommitFilesScope = {
+  commitId: string
+  readonly textContent: string
+}
+
+function commitFiles(item: GitHistoryItem): CommitFilesScope {
+  const selector = `[data-history-commit-detail][data-commit-id="${item.id}"]`
+  if (!container.querySelector(selector)) {
     throw new Error(`Missing files for ${item.id}`)
   }
-  return files
+  return {
+    commitId: item.id,
+    get textContent() {
+      return Array.from(container.querySelectorAll<HTMLElement>(selector))
+        .map((element) => element.textContent)
+        .join('')
+    }
+  }
 }
 
-function fileRows(element: ParentNode): HTMLButtonElement[] {
-  return Array.from(
-    element.querySelectorAll<HTMLButtonElement>('[data-testid="git-history-commit-file"]')
+function fileRows(element: ParentNode | CommitFilesScope): HTMLButtonElement[] {
+  const rows = Array.from(
+    container.querySelectorAll<HTMLButtonElement>('[data-testid="git-history-commit-file"]')
   )
+  return 'commitId' in element
+    ? rows.filter((row) => row.dataset.commitId === element.commitId)
+    : Array.from(
+        element.querySelectorAll<HTMLButtonElement>('[data-testid="git-history-commit-file"]')
+      )
 }
 
-function directoryRows(element: ParentNode): HTMLElement[] {
-  return Array.from(
-    element.querySelectorAll<HTMLElement>('[data-testid="git-history-commit-directory"]')
+function directoryRows(element: ParentNode | CommitFilesScope): HTMLElement[] {
+  const rows = Array.from(
+    container.querySelectorAll<HTMLElement>('[data-testid="git-history-commit-directory"]')
   )
+  return 'commitId' in element
+    ? rows.filter((row) => row.dataset.commitId === element.commitId)
+    : Array.from(
+        element.querySelectorAll<HTMLElement>('[data-testid="git-history-commit-directory"]')
+      )
 }
 
 function findCommitFilesViewAction(
@@ -418,7 +438,7 @@ describe('GitHistoryPanel', () => {
 
     const file = fileRows(commitFiles(item))[0]
     expect(file?.hasAttribute('title')).toBe(false)
-    expect(commitFiles(item).textContent).toContain(entry.path)
+    expect(container.textContent).toContain(entry.path)
   })
 
   it('uses the full highlighted directory row as the collapse control', async () => {
@@ -705,7 +725,7 @@ describe('GitHistoryPanel', () => {
     expect(fileRows(commitFiles(item))).toHaveLength(0)
 
     await expandCommit(item)
-    expect(container.querySelector('[data-testid="git-history-commit-files"]')).toBeNull()
+    expect(container.querySelector('[data-history-commit-detail]')).toBeNull()
 
     await expandCommit(item)
     expect(onLoadCommitFiles).toHaveBeenCalledTimes(1)

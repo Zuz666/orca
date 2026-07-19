@@ -533,9 +533,6 @@ export const BRANCH_REFRESH_INTERVAL_MS = 30_000
 // Why: keep the overlay measurable so Radix Tooltip triggers don't get transient top-left placement on hover.
 const SOURCE_CONTROL_ROW_ACTION_OVERLAY_CLASS =
   'absolute right-0 top-0 bottom-0 flex shrink-0 items-center gap-1.5 bg-accent pr-3 pl-2 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto'
-const SOURCE_CONTROL_TREE_INDENT_PX = 12
-const SOURCE_CONTROL_TREE_DIRECTORY_PADDING_PX = 8
-const SOURCE_CONTROL_TREE_FILE_PADDING_PX = 20
 const CAPPED_STATUS_RETRY_TIMEOUT_MS = 15_000
 const EMPTY_GIT_HISTORY_STATE: GitHistoryPanelState = { status: 'idle' }
 const DEFAULT_COLLAPSED_SECTIONS = ['history'] as const
