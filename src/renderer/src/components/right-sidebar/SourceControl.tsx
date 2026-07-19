@@ -6185,7 +6185,7 @@ function SourceControlInner(): React.JSX.Element {
                 onToggle={() => toggleSection('history')}
                 commitFilesViewMode={sourceControlCommitViewMode}
                 onCommitFilesViewModeChange={settings ? handleCommitFilesViewModeChange : undefined}
-                onRefresh={() => void refreshGitHistory()}
+                onRefresh={refreshGitHistory}
                 onOpenCommit={(item) => void openHistoryCommitDiff(item)}
                 onLoadCommitFiles={loadCommitFiles}
                 onOpenCommitFile={openCommitFile}

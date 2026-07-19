@@ -9409,6 +9409,9 @@
             "6d1e0a7c3b": "Failed to load commit files",
             "5e4f2a9c81": "More commit history actions"
           },
+          "GitHistoryRefreshError": {
+            "retry": "Retry"
+          },
           "HostedReviewActions": {
             "4d5fb5a284": "Close",
             "9845a71e17": "More actions",
