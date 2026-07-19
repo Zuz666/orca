@@ -79,6 +79,7 @@ Use a quieter hierarchy for nested file and source-control trees, where many adj
 - **Hover:** `bg-accent/40`.
 - **Selected:** `bg-accent/60`.
 - **Current / open:** `bg-accent`.
+- **Expanded detail group:** a containing `bg-muted/20` surface may distinguish nested commit details. If virtualization removes the wrapper, apply the same surface to each virtual row; don't treat it as the interactive idle state.
 
 This scoped hierarchy does not replace the full-strength list-row states above.
 
