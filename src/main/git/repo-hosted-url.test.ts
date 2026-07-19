@@ -19,22 +19,62 @@ describe('getRemoteCommitFileUrl', () => {
   })
 
   it('reads origin with the owning WSL distro and builds a snapshot URL', () => {
-    mocks.gitExecFileSync.mockReturnValue('git@github.com:Org/Repo.git\n')
+    mocks.gitExecFileSync.mockImplementation((args: string[]) =>
+      args[0] === 'remote' ? 'git@github.com:Org/Repo.git\n' : 'refs/remotes/origin/main\n'
+    )
 
     expect(
       getRemoteCommitFileUrl('/repo', 'src/a file.ts', SHA, { wslDistro: 'Ubuntu-24.04' })
-    ).toBe(`https://github.com/Org/Repo/blob/${SHA}/src/a%20file.ts`)
+    ).toEqual({
+      status: 'ok',
+      url: `https://github.com/Org/Repo/blob/${SHA}/src/a%20file.ts`
+    })
     expect(mocks.gitExecFileSync).toHaveBeenCalledWith(['remote', 'get-url', 'origin'], {
       cwd: '/repo',
       wslDistro: 'Ubuntu-24.04'
     })
+    expect(mocks.gitExecFileSync).toHaveBeenCalledWith(
+      ['for-each-ref', '--format=%(refname)', '--contains', SHA, 'refs/remotes/origin'],
+      { cwd: '/repo', wslDistro: 'Ubuntu-24.04' }
+    )
   })
 
-  it('returns null when origin cannot be read', () => {
+  it('returns no-remote when origin cannot be read', () => {
     mocks.gitExecFileSync.mockImplementation(() => {
       throw new Error('missing origin')
     })
 
-    expect(getRemoteCommitFileUrl('/repo', 'src/a.ts', SHA)).toBeNull()
+    expect(getRemoteCommitFileUrl('/repo', 'src/a.ts', SHA)).toEqual({ status: 'no-remote' })
+  })
+
+  it('returns no-remote for unsupported hosts without probing containment', () => {
+    mocks.gitExecFileSync.mockReturnValue('git@example.com:team/repo.git\n')
+
+    expect(getRemoteCommitFileUrl('/repo', 'src/a.ts', SHA)).toEqual({ status: 'no-remote' })
+    expect(mocks.gitExecFileSync).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns commit-not-on-remote when no origin ref contains the commit', () => {
+    mocks.gitExecFileSync.mockImplementation((args: string[]) =>
+      args[0] === 'remote' ? 'git@github.com:Org/Repo.git\n' : ''
+    )
+
+    expect(getRemoteCommitFileUrl('/repo', 'src/a.ts', SHA)).toEqual({
+      status: 'commit-not-on-remote'
+    })
+  })
+
+  it('keeps the resolved URL when the containment probe fails', () => {
+    mocks.gitExecFileSync.mockImplementation((args: string[]) => {
+      if (args[0] === 'remote') {
+        return 'git@github.com:Org/Repo.git\n'
+      }
+      throw new Error('for-each-ref failed')
+    })
+
+    expect(getRemoteCommitFileUrl('/repo', 'src/a.ts', SHA)).toEqual({
+      status: 'ok',
+      url: `https://github.com/Org/Repo/blob/${SHA}/src/a.ts`
+    })
   })
 })

@@ -13,6 +13,7 @@ import type {
   GitForkSyncExpectedUpstream,
   GitForkSyncResult,
   GitPushTarget,
+  GitRemoteCommitFileUrlResult,
   GitStagingArea,
   GitUpstreamStatus,
   GitWorktreeInfo,
@@ -884,12 +885,29 @@ export class SshGitProvider implements IGitProvider {
     worktreePath: string,
     relativePath: string,
     sha: string
-  ): Promise<string | null> {
+  ): Promise<GitRemoteCommitFileUrlResult> {
     const remoteUrl = await this.readOriginRemoteUrl(worktreePath)
     if (!remoteUrl) {
-      return null
+      return { status: 'no-remote' }
     }
-    return buildHostedRemoteCommitFileUrl(remoteUrl, relativePath, sha)
+    const url = buildHostedRemoteCommitFileUrl(remoteUrl, relativePath, sha)
+    if (!url) {
+      return { status: 'no-remote' }
+    }
+    // Why: a hosted URL 404s while the commit is unpushed. A failed probe keeps
+    // the legacy behavior of handing the URL to the browser.
+    try {
+      const containingRefs = await this.exec(
+        ['for-each-ref', '--format=%(refname)', '--contains', sha, 'refs/remotes/origin'],
+        worktreePath
+      )
+      if (!containingRefs.stdout.trim()) {
+        return { status: 'commit-not-on-remote' }
+      }
+    } catch {
+      // Probe failed; fall through to the resolved URL.
+    }
+    return { status: 'ok', url }
   }
 
   async getRemoteCommitUrl(worktreePath: string, sha: string): Promise<string | null> {

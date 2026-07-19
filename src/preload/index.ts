@@ -28,6 +28,7 @@ import type {
   GitHubWorkItem,
   JiraProjectStatusOrder,
   GitPushTarget,
+  GitRemoteCommitFileUrlResult,
   GitStagingArea,
   GitForkSyncExpectedUpstream,
   GitForkSyncResult,
@@ -3073,7 +3074,8 @@ const api = {
       relativePath: string
       sha: string
       connectionId?: string
-    }): Promise<string | null> => ipcRenderer.invoke('git:remoteCommitFileUrl', args),
+    }): Promise<GitRemoteCommitFileUrlResult> =>
+      ipcRenderer.invoke('git:remoteCommitFileUrl', args),
     remoteCommitUrl: (args: {
       worktreePath: string
       sha: string

@@ -9,6 +9,7 @@ import type {
   GitForkSyncExpectedUpstream,
   GitForkSyncResult,
   GitPushTarget,
+  GitRemoteCommitFileUrlResolver,
   GitStagingArea,
   GitUpstreamStatus,
   GitWorktreeInfo,
@@ -350,7 +351,7 @@ export type IGitProvider = {
     options?: { signal?: AbortSignal; timeoutMs?: number }
   ): Promise<{ stdout: string; stderr: string }>
   getRemoteFileUrl(worktreePath: string, relativePath: string, line: number): Promise<string | null>
-  getRemoteCommitFileUrl(path: string, relativePath: string, sha: string): Promise<string | null>
+  getRemoteCommitFileUrl: GitRemoteCommitFileUrlResolver
   getRemoteCommitUrl(worktreePath: string, sha: string): Promise<string | null>
   worktreeIsClean(
     worktreePath: string,

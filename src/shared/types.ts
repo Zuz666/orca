@@ -3495,6 +3495,24 @@ export type GitCommitCompareResult = {
   entries: GitBranchChangeEntry[]
 }
 
+/**
+ * Outcome of resolving a hosted web URL for a file at an immutable commit.
+ * 'commit-not-on-remote' means the commit is not reachable from any
+ * remote-tracking branch of the remote the URL would point at (i.e. unpushed),
+ * so the hosted URL would 404.
+ */
+export type GitRemoteCommitFileUrlResult =
+  | { status: 'ok'; url: string }
+  | { status: 'no-remote' }
+  | { status: 'commit-not-on-remote' }
+
+/** Signature of the provider/runtime boundary that resolves the URL. */
+export type GitRemoteCommitFileUrlResolver = (
+  path: string,
+  relativePath: string,
+  sha: string
+) => Promise<GitRemoteCommitFileUrlResult>
+
 export type GitDiffTextResult = {
   kind: 'text'
   originalContent: string

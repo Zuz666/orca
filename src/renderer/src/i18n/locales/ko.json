@@ -9674,10 +9674,13 @@
             "bf5082de46": "{{value0}}이(가) 복사됨",
             "c06193ef57": "{{value0}}을(를) 복사하지 못했습니다",
             "d172a4f068": "Commit 해시",
+            "4e27a9bc16": "상대 경로",
             "e283b50179": "Commit 메시지",
             "f394c6128a": "이 commit을 설명할 agent가 없습니다",
             "04a5d7239b": "이 repos에는 지원되는 웹 원격이 없습니다",
             "15b6e834ac": "브라우저에서 commit을 열지 못했습니다",
+            "5f38bacd27": "브라우저에서 파일을 열지 못했습니다",
+            "56be207fbb": "이 commit을 포함하는 리모트가 없습니다",
             "d37e68f61d": "리뷰용 브랜치를 준비하는 중…",
             "8d8f5c6c94": "commit 메시지를 생성하는 중…",
             "fda060d6ce": "commit 메시지를 검토한 다음 Create PR을 다시 시도하세요.",
@@ -10438,6 +10441,12 @@
             "a1b2c3d4e5": "파일 로드 중…",
             "b2c3d4e5f6": "이 commit에는 파일 변경 사항이 없습니다",
             "c3d4e5f6a7": "모든 변경 사항을 함께 열기"
+          },
+          "GitHistoryCommitFileContextMenu": {
+            "d4a67b210f": "Diff 열기",
+            "e5b78c3210": "브라우저에서 열기",
+            "f6c89d4321": "상대 경로 복사",
+            "a7d90e5432": "Commit 해시 복사"
           },
           "GitHistoryRow": {
             "2f9c41ab07": "commit {{value0}}의 파일 표시: {{value1}}",

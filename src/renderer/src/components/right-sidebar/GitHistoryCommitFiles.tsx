@@ -5,6 +5,7 @@ import { translate } from '@/i18n/i18n'
 import { getFileTypeIcon } from '@/lib/file-type-icons'
 import { basename, dirname } from '@/lib/path'
 import { cn } from '@/lib/utils'
+import type { GitHistoryItem } from '../../../../shared/git-history'
 import type {
   GitBranchChangeEntry,
   GitFileStatus,
@@ -27,6 +28,10 @@ import {
   type SourceControlTreeDirectoryNode
 } from './source-control-tree'
 import { STATUS_COLORS, STATUS_LABELS } from './status-display'
+import {
+  GitHistoryCommitFileContextMenu,
+  type GitHistoryCommitFileAction
+} from './GitHistoryCommitFileContextMenu'
 
 // State for a single commit's lazily-loaded file list. Owned by GitHistoryPanel,
 // populated through the onLoadCommitFiles loader supplied by SourceControl.
@@ -149,15 +154,21 @@ export function getGitHistoryCommitFilesRowKey(row: GitHistoryCommitFilesRow): s
 const DETAIL_ROW_CLASS = 'border-l border-border/60 bg-muted/20'
 
 function CommitFileRow({
-  commitId,
+  item,
   entry,
   onOpen,
+  onFileAction,
   depth,
   showPathHint
 }: {
-  commitId: string
+  item: GitHistoryItem
   entry: GitBranchChangeEntry
   onOpen: (entry: GitBranchChangeEntry, event: SourceControlRowOpenEvent) => void
+  onFileAction?: (
+    action: GitHistoryCommitFileAction,
+    item: GitHistoryItem,
+    entry: GitBranchChangeEntry
+  ) => void
   depth?: number
   showPathHint: boolean
 }): React.JSX.Element {
@@ -167,47 +178,54 @@ function CommitFileRow({
   const parentDir = dirname(entry.path)
   const dirPath = parentDir === '.' ? '' : parentDir
   const isTreeRow = depth !== undefined
+  const fileButton = (
+    <button
+      type="button"
+      className={cn(
+        DETAIL_ROW_CLASS,
+        'group flex w-full min-w-0 cursor-pointer items-center gap-1 py-1 pr-3 text-left text-xs transition-colors hover:bg-accent/40',
+        !isTreeRow && 'pl-9'
+      )}
+      style={
+        isTreeRow
+          ? {
+              paddingLeft: `${depth * SOURCE_CONTROL_TREE_INDENT_PX + SOURCE_CONTROL_TREE_FILE_PADDING_PX}px`
+            }
+          : undefined
+      }
+      data-testid="git-history-commit-file"
+      data-commit-id={item.id}
+      data-history-commit-detail=""
+      data-file-path={entry.path}
+      onClick={(event) => onOpen(entry, toSourceControlRowOpenEvent(event))}
+      onDoubleClick={(event) => onOpen(entry, toPermanentSourceControlRowOpenEvent(event))}
+    >
+      <FileIcon className="size-3.5 shrink-0" style={{ color: STATUS_COLORS[status] }} />
+      <span className="min-w-0 flex-1 truncate">
+        <span className="text-foreground">{fileName}</span>
+        {showPathHint && dirPath && (
+          <span className="ml-1.5 text-[11px] text-muted-foreground">{dirPath}</span>
+        )}
+      </span>
+      <span
+        className="w-4 shrink-0 text-center text-[10px] font-bold"
+        style={{ color: STATUS_COLORS[status] }}
+      >
+        {STATUS_LABELS[status]}
+      </span>
+    </button>
+  )
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            DETAIL_ROW_CLASS,
-            'group flex w-full min-w-0 cursor-pointer items-center gap-1 py-1 pr-3 text-left text-xs transition-colors hover:bg-accent/40',
-            !isTreeRow && 'pl-9'
-          )}
-          style={
-            isTreeRow
-              ? {
-                  paddingLeft: `${depth * SOURCE_CONTROL_TREE_INDENT_PX + SOURCE_CONTROL_TREE_FILE_PADDING_PX}px`
-                }
-              : undefined
-          }
-          data-testid="git-history-commit-file"
-          data-commit-id={commitId}
-          data-history-commit-detail=""
-          data-file-path={entry.path}
-          onClick={(event) => onOpen(entry, toSourceControlRowOpenEvent(event))}
-          onDoubleClick={(event) => onOpen(entry, toPermanentSourceControlRowOpenEvent(event))}
-        >
-          <FileIcon className="size-3.5 shrink-0" style={{ color: STATUS_COLORS[status] }} />
-          <span className="min-w-0 flex-1 truncate">
-            <span className="text-foreground">{fileName}</span>
-            {showPathHint && dirPath && (
-              <span className="ml-1.5 text-[11px] text-muted-foreground">{dirPath}</span>
-            )}
-          </span>
-          <span
-            className="w-4 shrink-0 text-center text-[10px] font-bold"
-            style={{ color: STATUS_COLORS[status] }}
-          >
-            {STATUS_LABELS[status]}
-          </span>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="left" sideOffset={6} className="max-w-sm break-all font-mono text-xs">
+      {onFileAction ? (
+        <GitHistoryCommitFileContextMenu item={item} entry={entry} onAction={onFileAction}>
+          {fileButton}
+        </GitHistoryCommitFileContextMenu>
+      ) : (
+        <TooltipTrigger asChild>{fileButton}</TooltipTrigger>
+      )}
+      <TooltipContent side="left" sideOffset={6} className="max-w-sm break-all font-mono">
         {entry.path}
       </TooltipContent>
     </Tooltip>
@@ -261,7 +279,7 @@ function CommitTreeDirectoryRow({
           </span>
         </button>
       </TooltipTrigger>
-      <TooltipContent side="left" sideOffset={6} className="max-w-sm break-all font-mono text-xs">
+      <TooltipContent side="left" sideOffset={6} className="max-w-sm break-all font-mono">
         {node.path}
       </TooltipContent>
     </Tooltip>
@@ -270,13 +288,21 @@ function CommitTreeDirectoryRow({
 
 export function GitHistoryCommitFilesRowView({
   row,
+  item,
   onToggleTreeDirectory,
   onOpenFile,
+  onFileAction,
   onOpenAll
 }: {
   row: GitHistoryCommitFilesRow
+  item: GitHistoryItem
   onToggleTreeDirectory: (key: string) => void
   onOpenFile: (entry: GitBranchChangeEntry, event: SourceControlRowOpenEvent) => void
+  onFileAction?: (
+    action: GitHistoryCommitFileAction,
+    item: GitHistoryItem,
+    entry: GitBranchChangeEntry
+  ) => void
   onOpenAll?: () => void
 }): React.JSX.Element {
   switch (row.kind) {
@@ -336,11 +362,12 @@ export function GitHistoryCommitFilesRowView({
     case 'file':
       return (
         <CommitFileRow
-          commitId={row.commitId}
+          item={item}
           entry={row.entry}
           depth={row.depth}
           showPathHint={row.showPathHint}
           onOpen={onOpenFile}
+          onFileAction={onFileAction}
         />
       )
     case 'directory':

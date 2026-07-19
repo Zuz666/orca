@@ -7,6 +7,7 @@ import type {
   GitForkSyncExpectedUpstream,
   GitForkSyncResult,
   GitPushTarget,
+  GitRemoteCommitFileUrlResult,
   GitStagingArea,
   GitStatusResult,
   GitUpstreamStatus,
@@ -937,7 +938,7 @@ export class RuntimeGitCommands {
     worktreeSelector: string,
     relativePath: string,
     sha: string
-  ): Promise<string | null> {
+  ): Promise<GitRemoteCommitFileUrlResult> {
     const target = await this.host.resolveRuntimeGitTarget(worktreeSelector)
     const normalizedRelativePath = normalizeRuntimeGitRelativePath(relativePath)
     const provider = target.connectionId ? getSshGitProvider(target.connectionId) : null

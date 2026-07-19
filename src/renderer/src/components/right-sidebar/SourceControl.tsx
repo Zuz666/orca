@@ -5072,13 +5072,18 @@ function SourceControlInner(): React.JSX.Element {
     [activeWorktreeId, branchSummary, openBranchDiff, resolveSplitTargetGroupId, worktreePath]
   )
 
-  const { loadCommitFiles, openHistoryCommitDiff, openCommitFile, handleCommitAction } =
-    useGitHistoryCommitActions({
-      activeWorktreeId,
-      worktreePath,
-      activeRepoSettings,
-      resolveSplitTargetGroupId
-    })
+  const {
+    loadCommitFiles,
+    openHistoryCommitDiff,
+    openCommitFile,
+    handleCommitAction,
+    handleCommitFileAction
+  } = useGitHistoryCommitActions({
+    activeWorktreeId,
+    worktreePath,
+    activeRepoSettings,
+    resolveSplitTargetGroupId
+  })
 
   // Why: route the note by relative filePath to whichever diff surface owns it — unstaged, then branch compare, else a plain editor tab.
   const handleOpenComment = useCallback(
@@ -6187,6 +6192,7 @@ function SourceControlInner(): React.JSX.Element {
                 onLoadCommitFiles={loadCommitFiles}
                 onOpenCommitFile={openCommitFile}
                 onCommitAction={handleCommitAction}
+                onCommitFileAction={handleCommitFileAction}
               />
             </div>
           )}

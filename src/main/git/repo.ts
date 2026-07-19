@@ -2,7 +2,7 @@
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { gitExecFileSync, gitExecFileAsync } from './runner'
-import type { BaseRefSearchResult } from '../../shared/types'
+import type { BaseRefSearchResult, GitRemoteCommitFileUrlResult } from '../../shared/types'
 import { parseGitRevListAheadBehindCounts } from '../../shared/git-rev-list-output'
 import { normalizeRuntimePathSeparators } from '../../shared/cross-platform-path'
 import { isForEachRefExcludeUnsupportedError } from '../../shared/git-ref-command-capabilities'
@@ -1014,12 +1014,29 @@ export function getRemoteCommitFileUrl(
   relativePath: string,
   sha: string,
   options: LocalGitExecOptions = {}
-): string | null {
+): GitRemoteCommitFileUrlResult {
   const remoteUrl = getRemoteUrl(repoPath, options)
   if (!remoteUrl) {
-    return null
+    return { status: 'no-remote' }
   }
-  return buildHostedRemoteCommitFileUrl(remoteUrl, relativePath, sha)
+  const url = buildHostedRemoteCommitFileUrl(remoteUrl, relativePath, sha)
+  if (!url) {
+    return { status: 'no-remote' }
+  }
+  // Why: a hosted URL 404s while the commit is unpushed. A failed probe keeps
+  // the legacy behavior of handing the URL to the browser.
+  try {
+    const containingRefs = gitExecFileSync(
+      ['for-each-ref', '--format=%(refname)', '--contains', sha, 'refs/remotes/origin'],
+      gitExecOptions(repoPath, options)
+    )
+    if (!containingRefs.trim()) {
+      return { status: 'commit-not-on-remote' }
+    }
+  } catch {
+    // Probe failed; fall through to the resolved URL.
+  }
+  return { status: 'ok', url }
 }
 
 /** Build a hosted URL (GitHub/GitLab/Bitbucket) for a commit; null when origin isn't a recognized host. */
