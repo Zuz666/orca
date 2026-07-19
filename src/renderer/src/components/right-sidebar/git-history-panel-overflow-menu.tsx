@@ -32,22 +32,20 @@ export function GitHistoryPanelOverflowMenu({
     <DropdownMenu>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="my-auto inline-flex shrink-0">
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                className="h-auto w-auto p-0.5 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent [&_svg]:size-3"
-                aria-label={translate(
-                  'auto.components.right.sidebar.GitHistoryPanel.5e4f2a9c81',
-                  'More commit history actions'
-                )}
-              >
-                <MoreHorizontal className="size-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-          </span>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="h-auto w-auto p-0.5 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent [&_svg]:size-3"
+              aria-label={translate(
+                'auto.components.right.sidebar.GitHistoryPanel.5e4f2a9c81',
+                'More commit history actions'
+              )}
+            >
+              <MoreHorizontal className="size-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom" sideOffset={6}>
           {translate(
