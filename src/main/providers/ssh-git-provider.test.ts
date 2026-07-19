@@ -1436,4 +1436,20 @@ describe('SshGitProvider', () => {
   it('isGitRepo always returns true for remote paths', () => {
     expect(provider.isGitRepo('/any/path')).toBe(true)
   })
+  it('builds a commit file URL from origin on the SSH owner host', async () => {
+    const sha = '0123456789abcdef0123456789abcdef01234567'
+    mux.request.mockResolvedValue({
+      stdout: 'git@gitlab.com:group/repo.git\n',
+      stderr: ''
+    })
+
+    await expect(
+      provider.getRemoteCommitFileUrl('/home/user/repo', 'src/a file.ts', sha)
+    ).resolves.toBe(`https://gitlab.com/group/repo/-/blob/${sha}/src/a%20file.ts`)
+    expect(mux.request).toHaveBeenCalledWith('git.exec', {
+      args: ['remote', 'get-url', 'origin'],
+      cwd: '/home/user/repo',
+      __streamResponse: true
+    })
+  })
 })

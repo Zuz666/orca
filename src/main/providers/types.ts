@@ -277,8 +277,8 @@ export type { GitProviderStatusOptions } from './git-provider-status-options'
 export type IGitProvider = {
   getStatus(worktreePath: string, options?: GitProviderStatusOptions): Promise<GitStatusResult>
   getSubmoduleStatus(
-    worktreePath: string,
-    submodulePath: string,
+    path: string,
+    submodule: string,
     area?: GitStagingArea
   ): Promise<GitStatusResult>
   checkIgnoredPaths(worktreePath: string, relativePaths: string[]): Promise<string[]>
@@ -341,11 +341,7 @@ export type IGitProvider = {
     options?: { deleteBranch?: boolean; forceBranchDelete?: boolean }
   ): Promise<RemoveWorktreeResult>
   renameCurrentBranch?(worktreePath: string, newBranch: string): Promise<void>
-  forceDeletePreservedBranch?(
-    repoPath: string,
-    branchName: string,
-    expectedHead: string
-  ): Promise<void>
+  forceDeletePreservedBranch?(repoPath: string, branch: string, expectedHead: string): Promise<void>
   isGitRepo(path: string): boolean
   isGitRepoAsync(dirPath: string): Promise<{ isRepo: boolean; rootPath: string | null }>
   exec(
@@ -354,6 +350,7 @@ export type IGitProvider = {
     options?: { signal?: AbortSignal; timeoutMs?: number }
   ): Promise<{ stdout: string; stderr: string }>
   getRemoteFileUrl(worktreePath: string, relativePath: string, line: number): Promise<string | null>
+  getRemoteCommitFileUrl(path: string, relativePath: string, sha: string): Promise<string | null>
   getRemoteCommitUrl(worktreePath: string, sha: string): Promise<string | null>
   worktreeIsClean(
     worktreePath: string,
