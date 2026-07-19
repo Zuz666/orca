@@ -19,6 +19,7 @@ import {
   GitHistoryCommitContextMenu,
   type GitHistoryCommitAction
 } from './GitHistoryCommitContextMenu'
+import type { GitHistoryCommitFileAction } from './GitHistoryCommitFileContextMenu'
 import type { SourceControlRowOpenEvent } from './source-control-split-open'
 import { SourceControlVirtualFileList } from './source-control-virtual-file-list'
 import {
@@ -51,6 +52,7 @@ export function GitHistoryPanel({
   onLoadCommitFiles,
   onOpenCommitFile,
   onCommitAction,
+  onCommitFileAction,
   commitFilesViewMode,
   onCommitFilesViewModeChange
 }: {
@@ -66,6 +68,11 @@ export function GitHistoryPanel({
     event?: SourceControlRowOpenEvent
   ) => void
   onCommitAction?: (action: GitHistoryCommitAction, item: GitHistoryItem) => void
+  onCommitFileAction?: (
+    action: GitHistoryCommitFileAction,
+    item: GitHistoryItem,
+    entry: GitBranchChangeEntry
+  ) => void
   commitFilesViewMode: SourceControlViewMode
   onCommitFilesViewModeChange?: (viewMode: SourceControlViewMode) => void
 }): React.JSX.Element | null {
@@ -157,9 +164,11 @@ export function GitHistoryPanel({
       return (
         <GitHistoryCommitFilesRowView
           key={rowKey}
+          item={item}
           row={virtualRow.detail}
           onToggleTreeDirectory={handleToggleCommitTreeDirectory}
           onOpenFile={(entry, event) => onOpenCommitFile?.(item, entry, event)}
+          onFileAction={onCommitFileAction}
           onOpenAll={onOpenCommit ? () => onOpenCommit(item) : undefined}
         />
       )

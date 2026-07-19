@@ -281,7 +281,7 @@ describe('git RPC methods', () => {
       getRuntimeGitRemoteFileUrl: vi.fn().mockResolvedValue('https://example.com/file#L3'),
       getRuntimeGitRemoteCommitFileUrl: vi
         .fn()
-        .mockResolvedValue('https://example.com/blob/abc/src/a.ts'),
+        .mockResolvedValue({ status: 'ok', url: 'https://example.com/blob/abc/src/a.ts' }),
       getRuntimeGitRemoteCommitUrl: vi.fn().mockResolvedValue('https://example.com/commit/abc')
     } as unknown as OrcaRuntimeService
     const dispatcher = new RpcDispatcher({ runtime, methods: GIT_METHODS })
@@ -353,7 +353,7 @@ describe('git RPC methods', () => {
     )
     expect(commitFileUrlResponse).toMatchObject({
       ok: true,
-      result: 'https://example.com/blob/abc/src/a.ts'
+      result: { status: 'ok', url: 'https://example.com/blob/abc/src/a.ts' }
     })
     expect(runtime.getRuntimeGitRemoteCommitUrl).toHaveBeenCalledWith('id:wt-1', commitOid)
     expect(commitUrlResponse).toMatchObject({ ok: true, result: 'https://example.com/commit/abc' })

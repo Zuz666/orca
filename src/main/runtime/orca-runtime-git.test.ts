@@ -599,7 +599,10 @@ describe('RuntimeGitCommands', () => {
 
   it('resolves commit file URLs with the local worktree runtime options', async () => {
     const sha = '0123456789abcdef0123456789abcdef01234567'
-    mocks.getRemoteCommitFileUrl.mockResolvedValue('https://github.com/org/repo/blob/sha/src/a.ts')
+    mocks.getRemoteCommitFileUrl.mockResolvedValue({
+      status: 'ok',
+      url: 'https://github.com/org/repo/blob/sha/src/a.ts'
+    })
     const commands = new RuntimeGitCommands({
       resolveRuntimeGitTarget: async () => ({
         worktree: makeWorktree('C:\\repo'),
@@ -610,7 +613,10 @@ describe('RuntimeGitCommands', () => {
 
     await expect(
       commands.getRuntimeGitRemoteCommitFileUrl('id:wt-1', 'src\\a.ts', sha)
-    ).resolves.toBe('https://github.com/org/repo/blob/sha/src/a.ts')
+    ).resolves.toEqual({
+      status: 'ok',
+      url: 'https://github.com/org/repo/blob/sha/src/a.ts'
+    })
 
     expect(mocks.getRemoteCommitFileUrl).toHaveBeenCalledWith('C:\\repo', 'src/a.ts', sha, {
       wslDistro: 'Ubuntu'
@@ -620,9 +626,10 @@ describe('RuntimeGitCommands', () => {
   it('resolves commit file URLs on the SSH owner host', async () => {
     const sha = '0123456789abcdef0123456789abcdef01234567'
     const provider = {
-      getRemoteCommitFileUrl: vi
-        .fn()
-        .mockResolvedValue('https://gitlab.com/group/repo/-/blob/sha/src/a.ts')
+      getRemoteCommitFileUrl: vi.fn().mockResolvedValue({
+        status: 'ok',
+        url: 'https://gitlab.com/group/repo/-/blob/sha/src/a.ts'
+      })
     }
     mocks.getSshGitProvider.mockReturnValue(provider)
     const commands = new RuntimeGitCommands({
@@ -635,7 +642,10 @@ describe('RuntimeGitCommands', () => {
 
     await expect(
       commands.getRuntimeGitRemoteCommitFileUrl('id:wt-1', 'src/a.ts', sha)
-    ).resolves.toBe('https://gitlab.com/group/repo/-/blob/sha/src/a.ts')
+    ).resolves.toEqual({
+      status: 'ok',
+      url: 'https://gitlab.com/group/repo/-/blob/sha/src/a.ts'
+    })
 
     expect(provider.getRemoteCommitFileUrl).toHaveBeenCalledWith('/remote/repo', 'src/a.ts', sha)
     expect(mocks.getRemoteCommitFileUrl).not.toHaveBeenCalled()

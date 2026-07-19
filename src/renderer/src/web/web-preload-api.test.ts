@@ -2430,7 +2430,10 @@ describe('web git preload API', () => {
             return Promise.resolve({
               id: `call-${runtimeCalls.length}`,
               ok: true,
-              result: `https://git.example.com/project/blob/${TEST_COMMIT_OID}/src/a.ts`,
+              result: {
+                status: 'ok',
+                url: `https://git.example.com/project/blob/${TEST_COMMIT_OID}/src/a.ts`
+              },
               _meta: { runtimeId: 'runtime-1' }
             })
           }
@@ -2465,7 +2468,10 @@ describe('web git preload API', () => {
         relativePath: 'src/a.ts',
         sha: TEST_COMMIT_OID
       })
-    ).resolves.toBe(`https://git.example.com/project/blob/${TEST_COMMIT_OID}/src/a.ts`)
+    ).resolves.toEqual({
+      status: 'ok',
+      url: `https://git.example.com/project/blob/${TEST_COMMIT_OID}/src/a.ts`
+    })
 
     await expect(
       globals.window.api.git.remoteCommitUrl({

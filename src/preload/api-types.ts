@@ -97,6 +97,7 @@ import type {
   GitForkSyncExpectedUpstream,
   GitForkSyncResult,
   GitPushTarget,
+  GitRemoteCommitFileUrlResult,
   GitStagingArea,
   GitStatusResult,
   GitUpstreamStatus,
@@ -2741,7 +2742,7 @@ export type PreloadApi = {
       relativePath: string
       sha: string
       connectionId?: string
-    }) => Promise<string | null>
+    }) => Promise<GitRemoteCommitFileUrlResult>
     remoteCommitUrl: (args: {
       worktreePath: string
       sha: string

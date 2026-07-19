@@ -2460,9 +2460,10 @@ describe('registerFilesystemHandlers', () => {
 
   it('routes ssh git:remoteCommitFileUrl through the SSH owner host', async () => {
     const sha = '0123456789abcdef0123456789abcdef01234567'
-    const getRemoteCommitFileUrl = vi
-      .fn()
-      .mockResolvedValue(`https://github.com/org/repo/blob/${sha}/src/a.ts`)
+    const getRemoteCommitFileUrl = vi.fn().mockResolvedValue({
+      status: 'ok',
+      url: `https://github.com/org/repo/blob/${sha}/src/a.ts`
+    })
     getSshGitProviderMock.mockReturnValue({ getRemoteCommitFileUrl })
 
     registerFilesystemHandlers(store as never)
@@ -2474,15 +2475,21 @@ describe('registerFilesystemHandlers', () => {
         sha,
         connectionId: 'conn-1'
       })
-    ).resolves.toBe(`https://github.com/org/repo/blob/${sha}/src/a.ts`)
+    ).resolves.toEqual({
+      status: 'ok',
+      url: `https://github.com/org/repo/blob/${sha}/src/a.ts`
+    })
     expect(getRemoteCommitFileUrl).toHaveBeenCalledWith('/remote/repo', 'src/a.ts', sha)
   })
 
   it('routes local WSL commit file URLs through the owning distro', async () => {
     await withPlatform('win32', async () => {
       const sha = '0123456789abcdef0123456789abcdef01234567'
-      const url = `https://gitlab.com/group/repo/-/blob/${sha}/src/a.ts`
-      getRemoteCommitFileUrlMock.mockReturnValue(url)
+      const result = {
+        status: 'ok' as const,
+        url: `https://gitlab.com/group/repo/-/blob/${sha}/src/a.ts`
+      }
+      getRemoteCommitFileUrlMock.mockReturnValue(result)
       const wslStore = {
         ...store,
         getRepos: () => [
@@ -2515,7 +2522,7 @@ describe('registerFilesystemHandlers', () => {
           relativePath: 'src/a.ts',
           sha
         })
-      ).resolves.toBe(url)
+      ).resolves.toEqual(result)
       expect(getRemoteCommitFileUrlMock).toHaveBeenCalledWith(
         WORKTREE_FEATURE_PATH,
         'src/a.ts',

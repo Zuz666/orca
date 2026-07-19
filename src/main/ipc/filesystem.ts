@@ -20,6 +20,7 @@ import type {
   GlobalSettings,
   GitStagingArea,
   GitPushTarget,
+  GitRemoteCommitFileUrlResult,
   GitUpstreamStatus,
   GitStatusResult,
   MarkdownDocument,
@@ -2208,7 +2209,7 @@ export function registerFilesystemHandlers(
         sha: string
         connectionId?: string
       }
-    ): Promise<string | null> => {
+    ): Promise<GitRemoteCommitFileUrlResult> => {
       const sha = validateFullGitObjectId(args.sha, 'sha')
       const relativePath = validateGitRelativeUrlPath(args.relativePath)
       // Why: origin belongs to the worktree owner host, not the Electron host.

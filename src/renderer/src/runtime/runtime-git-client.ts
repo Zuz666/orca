@@ -9,6 +9,7 @@ import type {
   GitForkSyncExpectedUpstream,
   GitForkSyncResult,
   GitPushTarget,
+  GitRemoteCommitFileUrlResult,
   GitStagingArea,
   GitStatusResult,
   GitUpstreamStatus,
@@ -927,7 +928,7 @@ export async function getRuntimeGitRemoteFileUrl(
 export async function getRuntimeGitRemoteCommitFileUrl(
   context: RuntimeGitContext,
   args: { relativePath: string; sha: string }
-): Promise<string | null> {
+): Promise<GitRemoteCommitFileUrlResult> {
   const target = getActiveRuntimeTarget(context.settings)
   if (target.kind === 'local' || !context.worktreeId) {
     return window.api.git.remoteCommitFileUrl({
@@ -937,7 +938,7 @@ export async function getRuntimeGitRemoteCommitFileUrl(
       connectionId: context.connectionId
     })
   }
-  return callRuntimeRpc<string | null>(
+  return callRuntimeRpc<GitRemoteCommitFileUrlResult>(
     target,
     'git.remoteCommitFileUrl',
     {

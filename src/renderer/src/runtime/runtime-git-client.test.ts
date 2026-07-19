@@ -739,7 +739,10 @@ describe('runtime git client', () => {
   })
   it('resolves commit file URLs through local preload IPC', async () => {
     const sha = '0123456789abcdef0123456789abcdef01234567'
-    gitRemoteCommitFileUrl.mockResolvedValue('https://github.com/org/repo/blob/sha/src/a.ts')
+    gitRemoteCommitFileUrl.mockResolvedValue({
+      status: 'ok',
+      url: 'https://github.com/org/repo/blob/sha/src/a.ts'
+    })
 
     await expect(
       getRuntimeGitRemoteCommitFileUrl(
@@ -751,7 +754,10 @@ describe('runtime git client', () => {
         },
         { relativePath: 'src/a.ts', sha }
       )
-    ).resolves.toBe('https://github.com/org/repo/blob/sha/src/a.ts')
+    ).resolves.toEqual({
+      status: 'ok',
+      url: 'https://github.com/org/repo/blob/sha/src/a.ts'
+    })
 
     expect(gitRemoteCommitFileUrl).toHaveBeenCalledWith({
       worktreePath: '/repo',
@@ -766,7 +772,7 @@ describe('runtime git client', () => {
     runtimeEnvironmentCall.mockResolvedValue({
       id: 'rpc-1',
       ok: true,
-      result: 'https://gitlab.com/group/repo/-/blob/sha/src/a.ts',
+      result: { status: 'ok', url: 'https://gitlab.com/group/repo/-/blob/sha/src/a.ts' },
       _meta: { runtimeId: 'remote-runtime' }
     })
 
@@ -779,7 +785,10 @@ describe('runtime git client', () => {
         },
         { relativePath: 'src/a.ts', sha }
       )
-    ).resolves.toBe('https://gitlab.com/group/repo/-/blob/sha/src/a.ts')
+    ).resolves.toEqual({
+      status: 'ok',
+      url: 'https://gitlab.com/group/repo/-/blob/sha/src/a.ts'
+    })
 
     expect(runtimeEnvironmentCall).toHaveBeenCalledWith({
       selector: 'env-1',
