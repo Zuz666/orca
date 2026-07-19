@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 import { getFileTypeIcon } from '@/lib/file-type-icons'
 import { basename, dirname } from '@/lib/path'
 import { translate } from '@/i18n/i18n'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatGitHistoryTimestamp } from './git-history-format'
 import type {
   GitBranchChangeEntry,
@@ -57,38 +58,45 @@ function CommitFileRow({
   const isTreeRow = depth !== undefined
 
   return (
-    <button
-      type="button"
-      className={cn(
-        'group flex w-full min-w-0 cursor-pointer items-center gap-1 py-1 pr-3 text-left text-xs transition-colors hover:bg-accent/40',
-        !isTreeRow && 'pl-9'
-      )}
-      style={
-        isTreeRow
-          ? {
-              paddingLeft: `${depth * SOURCE_CONTROL_TREE_INDENT_PX + SOURCE_CONTROL_TREE_FILE_PADDING_PX}px`
-            }
-          : undefined
-      }
-      title={entry.path}
-      data-testid="git-history-commit-file"
-      onClick={(event) => onOpen(entry, toSourceControlRowOpenEvent(event))}
-      onDoubleClick={(event) => onOpen(entry, toPermanentSourceControlRowOpenEvent(event))}
-    >
-      <FileIcon className="size-3.5 shrink-0" style={{ color: STATUS_COLORS[status] }} />
-      <span className="min-w-0 flex-1 truncate">
-        <span className="text-foreground">{fileName}</span>
-        {showPathHint && dirPath && (
-          <span className="ml-1.5 text-[11px] text-muted-foreground">{dirPath}</span>
-        )}
-      </span>
-      <span
-        className="w-4 shrink-0 text-center text-[10px] font-bold"
-        style={{ color: STATUS_COLORS[status] }}
-      >
-        {STATUS_LABELS[status]}
-      </span>
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            'group flex w-full min-w-0 cursor-pointer items-center gap-1 py-1 pr-3 text-left text-xs transition-colors hover:bg-accent/40',
+            !isTreeRow && 'pl-9'
+          )}
+          style={
+            isTreeRow
+              ? {
+                  paddingLeft: `${depth * SOURCE_CONTROL_TREE_INDENT_PX + SOURCE_CONTROL_TREE_FILE_PADDING_PX}px`
+                }
+              : undefined
+          }
+          data-testid="git-history-commit-file"
+          data-file-path={entry.path}
+          onClick={(event) => onOpen(entry, toSourceControlRowOpenEvent(event))}
+          onDoubleClick={(event) => onOpen(entry, toPermanentSourceControlRowOpenEvent(event))}
+        >
+          <FileIcon className="size-3.5 shrink-0" style={{ color: STATUS_COLORS[status] }} />
+          <span className="min-w-0 flex-1 truncate">
+            <span className="text-foreground">{fileName}</span>
+            {showPathHint && dirPath && (
+              <span className="ml-1.5 text-[11px] text-muted-foreground">{dirPath}</span>
+            )}
+          </span>
+          <span
+            className="w-4 shrink-0 text-center text-[10px] font-bold"
+            style={{ color: STATUS_COLORS[status] }}
+          >
+            {STATUS_LABELS[status]}
+          </span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="left" sideOffset={6} className="max-w-sm break-all font-mono text-xs">
+        {entry.path}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -102,37 +110,40 @@ function CommitTreeDirectoryRow({
   onToggle: () => void
 }): React.JSX.Element {
   return (
-    <div
-      className="group relative flex w-full items-center gap-1 pr-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
-      style={{
-        paddingLeft: `${node.depth * SOURCE_CONTROL_TREE_INDENT_PX + SOURCE_CONTROL_TREE_DIRECTORY_PADDING_PX}px`
-      }}
-      data-testid="git-history-commit-directory"
-      data-tree-path={node.path}
-    >
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 items-center gap-1 text-left"
-        onClick={onToggle}
-        aria-expanded={!isCollapsed}
-      >
-        <ChevronDown
-          className={cn(
-            'size-3 shrink-0 transition-transform motion-reduce:transition-none',
-            isCollapsed && '-rotate-90'
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="group relative flex w-full items-center gap-1 py-1 pr-3 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+          style={{
+            paddingLeft: `${node.depth * SOURCE_CONTROL_TREE_INDENT_PX + SOURCE_CONTROL_TREE_DIRECTORY_PADDING_PX}px`
+          }}
+          data-testid="git-history-commit-directory"
+          data-tree-path={node.path}
+          onClick={onToggle}
+          aria-expanded={!isCollapsed}
+        >
+          <ChevronDown
+            className={cn(
+              'size-3 shrink-0 transition-transform motion-reduce:transition-none',
+              isCollapsed && '-rotate-90'
+            )}
+          />
+          {isCollapsed ? (
+            <Folder className="size-3 shrink-0" />
+          ) : (
+            <FolderOpen className="size-3 shrink-0" />
           )}
-        />
-        {isCollapsed ? (
-          <Folder className="size-3 shrink-0" />
-        ) : (
-          <FolderOpen className="size-3 shrink-0" />
-        )}
-        <span className="min-w-0 flex-1 truncate">{node.name}</span>
-      </button>
-      <span className="w-4 shrink-0 text-center text-[10px] font-bold tabular-nums text-muted-foreground/80">
-        {node.fileCount}
-      </span>
-    </div>
+          <span className="min-w-0 flex-1 truncate">{node.name}</span>
+          <span className="w-4 shrink-0 text-center text-[10px] font-bold tabular-nums text-muted-foreground/80">
+            {node.fileCount}
+          </span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="left" sideOffset={6} className="max-w-sm break-all font-mono text-xs">
+        {node.path}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 

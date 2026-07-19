@@ -235,7 +235,7 @@ export function GitHistoryPanel({
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                className="my-auto h-auto w-auto p-0.5 text-muted-foreground hover:bg-transparent hover:text-muted-foreground dark:hover:bg-transparent [&_svg]:size-3"
+                className="my-auto h-auto w-auto p-0.5 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent [&_svg]:size-3"
                 aria-label={translate(
                   'auto.components.right.sidebar.GitHistoryPanel.9289ba0cb9',
                   'What are refs?'
