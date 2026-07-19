@@ -19,7 +19,11 @@ import type {
   RemoveWorktreeResult
 } from '../../shared/types'
 import type { GitHistoryOptions, GitHistoryResult } from '../../shared/git-history'
-import { buildHostedRemoteCommitUrl, buildHostedRemoteFileUrl } from '../git/hosted-remote-url'
+import {
+  buildHostedRemoteCommitFileUrl,
+  buildHostedRemoteCommitUrl,
+  buildHostedRemoteFileUrl
+} from '../git/hosted-remote-url'
 import { JsonRpcErrorCode } from '../ssh/relay-protocol'
 import { requestGitStreamable } from '../ssh/ssh-git-response-stream-reader'
 import type { CommitMessageDraftContext } from '../../shared/commit-message-generation'
@@ -874,6 +878,18 @@ export class SshGitProvider implements IGitProvider {
     }
 
     return buildHostedRemoteFileUrl(remoteUrl, relativePath, defaultBranch, line)
+  }
+
+  async getRemoteCommitFileUrl(
+    worktreePath: string,
+    relativePath: string,
+    sha: string
+  ): Promise<string | null> {
+    const remoteUrl = await this.readOriginRemoteUrl(worktreePath)
+    if (!remoteUrl) {
+      return null
+    }
+    return buildHostedRemoteCommitFileUrl(remoteUrl, relativePath, sha)
   }
 
   async getRemoteCommitUrl(worktreePath: string, sha: string): Promise<string | null> {
