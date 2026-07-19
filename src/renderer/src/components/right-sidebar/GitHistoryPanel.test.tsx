@@ -207,9 +207,7 @@ function selectCommitFilesView(label: 'View as list' | 'View as tree'): void {
   })
 }
 
-// Flush exactly the loader microtask chain (click -> loading -> ready). Not
-// waitFor: the stale-load test needs 'Loading files' to stay while its loader
-// promise is still pending.
+// Flush only loader microtasks; stale-load tests must leave unresolved loaders pending.
 async function expandCommit(item: GitHistoryItem): Promise<void> {
   const row = commitRow(item)
   await act(async () => {

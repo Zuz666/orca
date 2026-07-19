@@ -11,9 +11,7 @@ import {
 import { translate } from '@/i18n/i18n'
 import type { SourceControlViewMode } from '../../../../shared/types'
 
-// Why: the commit-files layout is a low-frequency action that only affects
-// expanded commit rows, so it lives in an overflow menu like the changes
-// header's layout control (and VS Code) instead of a permanent header button.
+// Why: commit-file layout is infrequent and scoped to expanded rows, so keep it in overflow.
 export function GitHistoryPanelOverflowMenu({
   commitFilesViewMode,
   viewModeToggleDisabled,

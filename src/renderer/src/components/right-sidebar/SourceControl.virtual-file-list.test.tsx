@@ -312,6 +312,23 @@ function virtualList(): HTMLDivElement | null {
   return container.querySelector<HTMLDivElement>('[data-testid="source-control-virtual-list"]')
 }
 
+function overflowViewAction(
+  triggerLabel: string,
+  actionLabel: 'View as list' | 'View as tree'
+): HTMLButtonElement {
+  const buttons = Array.from(container.querySelectorAll('button'))
+  const triggerIndex = buttons.findIndex(
+    (button) => button.getAttribute('aria-label') === triggerLabel
+  )
+  const action = buttons
+    .slice(triggerIndex + 1)
+    .find((button) => button.textContent?.trim() === actionLabel)
+  if (triggerIndex < 0 || !action) {
+    throw new Error(`Missing ${actionLabel} action after ${triggerLabel}`)
+  }
+  return action
+}
+
 describe('SourceControl virtualized changed-files list', () => {
   it('bounds mounted rows by viewport + overscan with 500 entries', () => {
     resetState({
@@ -488,4 +505,44 @@ describe('SourceControl commit file view mode', () => {
       expect(labels.sort()).toEqual([changesLabel, commitLabel].sort())
     }
   )
+
+  it('persists commit-file layout without changing the upper changes layout', () => {
+    const updateSettings = vi.fn().mockResolvedValue(undefined)
+    resetState({
+      settings: {
+        sourceControlViewMode: 'list',
+        sourceControlCommitViewMode: 'list'
+      },
+      updateSettings
+    })
+    renderSourceControl()
+    vi.clearAllMocks()
+
+    act(() => {
+      overflowViewAction('More commit history actions', 'View as tree').click()
+    })
+
+    expect(updateSettings).toHaveBeenCalledOnce()
+    expect(updateSettings).toHaveBeenCalledWith({ sourceControlCommitViewMode: 'tree' })
+  })
+
+  it('persists the upper changes layout without changing commit-file layout', () => {
+    const updateSettings = vi.fn().mockResolvedValue(undefined)
+    resetState({
+      settings: {
+        sourceControlViewMode: 'list',
+        sourceControlCommitViewMode: 'list'
+      },
+      updateSettings
+    })
+    renderSourceControl()
+    vi.clearAllMocks()
+
+    act(() => {
+      overflowViewAction('More source control actions', 'View as tree').click()
+    })
+
+    expect(updateSettings).toHaveBeenCalledOnce()
+    expect(updateSettings).toHaveBeenCalledWith({ sourceControlViewMode: 'tree' })
+  })
 })
