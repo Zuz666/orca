@@ -9386,6 +9386,9 @@
             "6d1e0a7c3b": "无法加载提交文件",
             "5e4f2a9c81": "更多提交历史操作"
           },
+          "GitHistoryRefreshError": {
+            "retry": "重试"
+          },
           "HostedReviewActions": {
             "4d5fb5a284": "关闭",
             "9845a71e17": "更多操作",

@@ -14,6 +14,7 @@ import { GitHistoryRow } from './GitHistoryRow'
 import { GitHistoryCommitFiles } from './GitHistoryCommitFiles'
 import { GitHistoryPanelOverflowMenu } from './git-history-panel-overflow-menu'
 import { useGitHistoryCommitFiles } from './use-git-history-commit-files'
+import { GitHistoryRefreshError } from './GitHistoryRefreshError'
 import {
   GitHistoryCommitContextMenu,
   type GitHistoryCommitAction
@@ -297,11 +298,12 @@ export function GitHistoryPanel({
         </div>
       </div>
       {!collapsed && state.status === 'error' && !result && (
-        <div
-          className={cn(expandedBodyClassName, 'px-6 py-2 text-[11px] text-destructive')}
-          style={expandedBodyStyle}
-        >
-          {state.error}
+        <div className={expandedBodyClassName} style={expandedBodyStyle}>
+          <GitHistoryRefreshError
+            error={state.error}
+            pending={refreshBlocked}
+            onRetry={handleRefresh}
+          />
         </div>
       )}
       {!collapsed && (state.status === 'idle' || state.status === 'loading') && !result && (
@@ -322,15 +324,31 @@ export function GitHistoryPanel({
         </div>
       )}
       {!collapsed && result && viewModels.length === 0 && (
-        <div
-          className={cn(expandedBodyClassName, 'px-6 py-2 text-[11px] text-muted-foreground')}
-          style={expandedBodyStyle}
-        >
-          {translate('auto.components.right.sidebar.GitHistoryPanel.cf7cad58d2', 'No commits yet')}
+        <div className={expandedBodyClassName} style={expandedBodyStyle}>
+          {state.status === 'error' && (
+            <GitHistoryRefreshError
+              error={state.error}
+              pending={refreshBlocked}
+              onRetry={handleRefresh}
+            />
+          )}
+          <div className="px-6 py-2 text-[11px] text-muted-foreground">
+            {translate(
+              'auto.components.right.sidebar.GitHistoryPanel.cf7cad58d2',
+              'No commits yet'
+            )}
+          </div>
         </div>
       )}
       {!collapsed && viewModels.length > 0 && (
         <div className={expandedBodyClassName} style={expandedBodyStyle}>
+          {state.status === 'error' && (
+            <GitHistoryRefreshError
+              error={state.error}
+              pending={refreshBlocked}
+              onRetry={handleRefresh}
+            />
+          )}
           {viewModels.map((viewModel) => {
             const item = viewModel.historyItem
             const isBoundaryNode =

@@ -9386,6 +9386,9 @@
             "6d1e0a7c3b": "commit ファイルを読み込めませんでした",
             "5e4f2a9c81": "その他のコミット履歴操作"
           },
+          "GitHistoryRefreshError": {
+            "retry": "再試行"
+          },
           "HostedReviewActions": {
             "4d5fb5a284": "閉じる",
             "9845a71e17": "その他の操作",

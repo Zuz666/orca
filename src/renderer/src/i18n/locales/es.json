@@ -9386,6 +9386,9 @@
             "6d1e0a7c3b": "No se pudieron cargar los archivos del commit",
             "5e4f2a9c81": "Más acciones del historial de commits"
           },
+          "GitHistoryRefreshError": {
+            "retry": "Reintentar"
+          },
           "HostedReviewActions": {
             "4d5fb5a284": "Cerrar",
             "9845a71e17": "Más acciones",

@@ -238,6 +238,128 @@ describe('GitHistoryPanel', () => {
     expect(commitRow(makeHistoryItem()).getAttribute('aria-label')).toContain('52ad492')
   })
 
+  it('shows a retryable alert above a retained graph when refresh fails', () => {
+    const item = makeHistoryItem()
+    const onRefresh = vi.fn()
+
+    renderPanel({
+      state: { status: 'error', result: makeHistoryResult([item]), error: 'Refresh failed' },
+      onRefresh
+    })
+
+    const alert = container.querySelector<HTMLElement>('[role="alert"]')
+    expect(alert?.getAttribute('aria-atomic')).toBe('true')
+    expect(alert?.textContent).toContain('Refresh failed')
+    expect(commitRow(item)).not.toBeNull()
+    const retry = Array.from(alert?.querySelectorAll('button') ?? []).find(
+      (button) => button.textContent?.trim() === 'Retry'
+    )
+    if (!retry) {
+      throw new Error('Missing history refresh retry')
+    }
+    act(() => {
+      retry.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(onRefresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the same retry surface when the initial history load fails', () => {
+    const onRefresh = vi.fn()
+
+    renderPanel({ state: { status: 'error', error: 'Initial load failed' }, onRefresh })
+
+    const alert = container.querySelector<HTMLElement>('[role="alert"]')
+    expect(alert?.textContent).toContain('Initial load failed')
+    expect(container.querySelector('[data-testid="git-history-row"]')).toBeNull()
+    const retry = Array.from(alert?.querySelectorAll('button') ?? []).find(
+      (button) => button.textContent?.trim() === 'Retry'
+    )
+    if (!retry) {
+      throw new Error('Missing initial history retry')
+    }
+    act(() => {
+      retry.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(onRefresh).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['header refresh', DEFAULT_PANEL_STATE, 'Refresh commits', false],
+    [
+      'inline retry',
+      { status: 'error' as const, result: makeHistoryResult(), error: 'Refresh failed' },
+      'Retry',
+      true
+    ]
+  ])(
+    'guards duplicate %s clicks before the parent rerenders',
+    async (_name, state, label, nativeDisabled) => {
+      let resolveRefresh: (() => void) | undefined
+      const refreshPromise = new Promise<void>((resolve) => {
+        resolveRefresh = resolve
+      })
+      const onRefresh = vi.fn().mockReturnValueOnce(refreshPromise).mockResolvedValue(undefined)
+
+      renderPanel({ state, onRefresh })
+      const refresh = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
+        (button) =>
+          button.getAttribute('aria-label') === label || button.textContent?.trim() === label
+      )
+      if (!refresh) {
+        throw new Error(`Missing history ${label} button`)
+      }
+      act(() => {
+        refresh.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        refresh.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      })
+
+      expect(onRefresh).toHaveBeenCalledTimes(1)
+      expect(refresh.getAttribute('aria-disabled')).toBe(nativeDisabled ? null : 'true')
+      expect(refresh.disabled).toBe(nativeDisabled)
+
+      const settleRefresh = resolveRefresh
+      if (!settleRefresh) {
+        throw new Error('Missing history refresh resolver')
+      }
+      await act(async () => {
+        settleRefresh()
+        await refreshPromise
+        await Promise.resolve()
+      })
+      expect(refresh.getAttribute('aria-disabled')).not.toBe('true')
+      expect(refresh.disabled).toBe(false)
+
+      act(() => {
+        refresh.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      })
+      expect(onRefresh).toHaveBeenCalledTimes(2)
+    }
+  )
+
+  it.each([
+    ['loading', { status: 'loading' as const }],
+    ['refreshing', { status: 'refreshing' as const, result: makeHistoryResult() }]
+  ])('keeps the refresh control focusable but inert while %s', (_name, state) => {
+    const onRefresh = vi.fn()
+
+    renderPanel({ state, onRefresh })
+    const refresh = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Refresh commits"]'
+    )
+    if (!refresh) {
+      throw new Error('Missing history refresh button')
+    }
+    refresh.focus()
+    act(() => {
+      refresh.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(document.activeElement).toBe(refresh)
+    expect(refresh.getAttribute('aria-disabled')).toBe('true')
+    expect(refresh.disabled).toBe(false)
+    expect(onRefresh).not.toHaveBeenCalled()
+  })
+
   it('defaults to flat commit changes and switches between list and tree without reloading', async () => {
     const item = makeHistoryItem()
     const entries = [
