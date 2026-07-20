@@ -6555,10 +6555,6 @@ export function CommitArea({
     'auto.components.right.sidebar.SourceControl.cc199ccc5f',
     'More commit and remote actions'
   )
-  const moreActionsLabel = translate(
-    'auto.components.right.sidebar.SourceControl.4d6e1fd7f3',
-    'More actions'
-  )
   const dropdownMenuContent = (
     <DropdownMenuContent align="end" className="min-w-[14rem]">
       {dropdownItems.map((entry, index) =>
@@ -6633,10 +6629,6 @@ export function CommitArea({
                   <button
                     type="button"
                     onClick={() => onCancelGenerate()}
-                    title={translate(
-                      'auto.components.right.sidebar.SourceControl.527e130b6f',
-                      'Stop generating'
-                    )}
                     aria-label={translate(
                       'auto.components.right.sidebar.SourceControl.ddc1fbd690',
                       'Stop generating commit message'
@@ -6667,13 +6659,6 @@ export function CommitArea({
                       }
                       onGenerate()
                     }}
-                    title={
-                      generateDisabledReason ??
-                      translate(
-                        'auto.components.right.sidebar.SourceControl.b16b8f0e4b',
-                        'ai commit msg'
-                      )
-                    }
                     aria-label={translate(
                       'auto.components.right.sidebar.SourceControl.461575b9bc',
                       'Generate commit message with AI'
@@ -6714,7 +6699,6 @@ export function CommitArea({
                   disabled={primaryAction.disabled}
                   onClick={() => onPrimaryAction()}
                   className="w-full rounded-r-none px-3 text-[11px]"
-                  title={primaryAction.title}
                 >
                   {showSpinner ? (
                     <Loader2 className="size-3.5 animate-spin" />
@@ -6747,7 +6731,6 @@ export function CommitArea({
                       primaryAction.disabled && 'opacity-50'
                     )}
                     aria-label={moreCommitAndRemoteActionsLabel}
-                    title={moreActionsLabel}
                   >
                     {showChevronSpinner ? (
                       <Loader2 className="size-3.5 animate-spin" />

@@ -441,6 +441,27 @@ describe('GitHistoryPanel', () => {
     expect(container.textContent).toContain(entry.path)
   })
 
+  it('shows commit and ref hints through tooltips instead of native titles', () => {
+    const item = makeHistoryItem({
+      references: [
+        { id: 'refs/heads/main', name: 'main', category: 'branches' },
+        { id: 'refs/remotes/origin/main', name: 'origin/main', category: 'remote branches' },
+        { id: 'refs/heads/feature', name: 'feature', category: 'branches' },
+        { id: 'refs/tags/v1.4.0', name: 'v1.4.0', category: 'tags' }
+      ]
+    })
+
+    renderPanel({ state: { status: 'ready', result: makeHistoryResult([item]) } })
+
+    const row = commitRow(item)
+    // Why: a native title on the row, subject, or ref pills duplicates the app
+    // tooltip on the same hover path (BUG-004).
+    expect(row.hasAttribute('title')).toBe(false)
+    expect(row.querySelectorAll('[title]')).toHaveLength(0)
+    expect(container.textContent).toContain(item.subject)
+    expect(container.textContent).toContain('+1')
+  })
+
   it('uses the full highlighted directory row as the collapse control', async () => {
     const item = makeHistoryItem()
     const entries = [
