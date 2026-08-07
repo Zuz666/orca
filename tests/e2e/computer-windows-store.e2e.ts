@@ -68,6 +68,7 @@ async function runSettingsFrameScript(scriptArgs: string[], timeoutMs: number): 
       '-NoLogo',
       '-NoProfile',
       '-NonInteractive',
+      '-Sta',
       '-ExecutionPolicy',
       'Bypass',
       '-File',
