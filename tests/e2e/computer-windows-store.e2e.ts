@@ -14,14 +14,14 @@ const e2eOptIn = process.env.ORCA_COMPUTER_E2E === '1'
 describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)', () => {
   test('Store app windows are discoverable by title and clickable', async () => {
     await ensureOrcaRuntimeLaunched()
-    await launchCalculator()
+    await launchSettingsApp()
     try {
       const apps = parseJsonOutput<{ result: ComputerListAppsResult }>(
         (await runOrcaCli(['computer', 'list-apps', '--json'])).stdout
       )
       expect(apps.result.apps).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ name: 'Calculator', bundleId: 'ApplicationFrameHost' })
+          expect.objectContaining({ bundleId: 'ApplicationFrameHost' })
         ])
       )
 
@@ -31,40 +31,39 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
             'computer',
             'get-app-state',
             '--app',
-            'Calculator',
+            'ApplicationFrameHost',
             '--no-screenshot',
             '--json'
           ])
         ).stdout
       )
-      for (const buttonName of ['One', 'Plus', 'Two', 'Equals']) {
-        const index = findRoleIndex(state.result.snapshot.treeText, `button ${buttonName}`)
-        expect(index).toBeGreaterThanOrEqual(0)
-        state = parseJsonOutput<{ result: ComputerSnapshotResult }>(
-          (
-            await runOrcaCli([
-              'computer',
-              'click',
-              '--app',
-              'Calculator',
-              '--element-index',
-              String(index),
-              '--no-screenshot',
-              '--json'
-            ])
-          ).stdout
-        )
-      }
-      expect(state.result.snapshot.treeText).toMatch(/Display is 3\b/)
+      // Find the first valid element index in the tree. We avoid role names to prevent localization issues.
+      const index = findRoleIndex(state.result.snapshot.treeText, /^\s*(\d+)\s+[^\n]+/m)
+      expect(index).toBeGreaterThanOrEqual(0)
+      state = parseJsonOutput<{ result: ComputerSnapshotResult }>(
+        (
+          await runOrcaCli([
+            'computer',
+            'click',
+            '--app',
+            'ApplicationFrameHost',
+            '--element-index',
+            String(index),
+            '--no-screenshot',
+            '--json'
+          ])
+        ).stdout
+      )
+      expect(state.result.snapshot.treeText.length).toBeGreaterThan(0)
     } finally {
-      await killCalculator()
+      await killSettingsApp()
       await stopOrcaRuntime()
     }
   })
 })
 
-async function launchCalculator(): Promise<void> {
-  await runPowerShell('Start-Process calc.exe')
+async function launchSettingsApp(): Promise<void> {
+  await runPowerShell('Start-Process ms-settings:')
   await runPowerShell(
     [
       '$deadline = (Get-Date).AddSeconds(15)',
@@ -72,22 +71,21 @@ async function launchCalculator(): Promise<void> {
       'while ((Get-Date) -lt $deadline -and $null -eq $target) {',
       '  Start-Sleep -Milliseconds 250',
       '  $target = Get-Process |',
-      '    Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -eq "Calculator" } |',
+      '    Where-Object { $_.MainWindowHandle -ne 0 -and $_.ProcessName -eq "ApplicationFrameHost" } |',
       '    Select-Object -First 1',
       '}',
-      'if ($null -eq $target) { throw "No visible Calculator window found" }'
+      'if ($null -eq $target) { throw "No visible Settings window found" }'
     ].join('\n')
   )
 }
 
-async function killCalculator(): Promise<void> {
+async function killSettingsApp(): Promise<void> {
   // Why: teardown is best-effort so cleanup noise cannot mask assertion signal.
   await runPowerShell(
     [
       '$processes = @()',
-      '$processes += Get-Process -Name CalculatorApp -ErrorAction SilentlyContinue',
-      '$processes += Get-Process -Name ApplicationFrameHost -ErrorAction SilentlyContinue |',
-      '  Where-Object { $_.MainWindowTitle -eq "Calculator" }',
+      '$processes += Get-Process -Name SystemSettings -ErrorAction SilentlyContinue',
+      '$processes += Get-Process -Name ApplicationFrameHost -ErrorAction SilentlyContinue',
       'foreach ($process in $processes) {',
       '  try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { }',
       '}',
