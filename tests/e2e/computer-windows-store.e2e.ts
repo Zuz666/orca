@@ -10,6 +10,7 @@ import {
   runOrcaCli,
   stopOrcaRuntime
 } from './helpers/computer-driver'
+const execFileAsync = promisify(execFile)
 
 const isWindows = process.platform === 'win32'
 const e2eOptIn = process.env.ORCA_COMPUTER_E2E === '1'
@@ -52,16 +53,15 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
         await killSettingsApp(targetHwnd, targetPid)
       } else {
         // Fallback cleanup if launch timed out and leaked a frame
-        await import('node:child_process').then(({ execFile }) => {
-          execFile('powershell.exe', ['-Command', 'Stop-Process -Name ApplicationFrameHost -ErrorAction SilentlyContinue'])
-        })
+        await execFileAsync('powershell.exe', [
+          '-Command',
+          'Stop-Process -Name ApplicationFrameHost -ErrorAction SilentlyContinue'
+        ]).catch(() => undefined)
       }
       await stopOrcaRuntime()
     }
   })
 })
-const execFileAsync = promisify(execFile)
-
 const settingsFrameScript = join(__dirname, 'helpers', 'Invoke-SettingsApplicationFrame.ps1')
 
 async function runSettingsFrameScript(scriptArgs: string[], timeoutMs: number): Promise<string> {
