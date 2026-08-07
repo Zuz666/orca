@@ -207,6 +207,11 @@ public static class SettingsFrameLauncher
         if (!IsWindow(hwnd))
             return;
 
+        uint ownerPid;
+        if (GetWindowThreadProcessId(hwnd, out ownerPid) == 0 ||
+            !ProcessNameEquals(ownerPid, "ApplicationFrameHost"))
+            return;
+
         if (!PostMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero))
             throw new Win32Exception(Marshal.GetLastWin32Error(), "PostMessage(WM_CLOSE) failed");
 
