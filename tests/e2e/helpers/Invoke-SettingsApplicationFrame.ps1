@@ -344,6 +344,7 @@ public static class SettingsFrameLauncher
 '@
 }
 
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 switch ($Action) {
     'Launch' {
