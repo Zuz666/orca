@@ -64,8 +64,6 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
   })
 })
 async function launchSettingsApp(): Promise<string> {
-  // Ensure no stale Settings process prevents a new host from spawning
-  await runPowerShell('Get-Process -Name SystemSettings -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; exit 0')
 
   // Launch ms-settings and capture the newly spawned ApplicationFrameHost PID
   const script = [
@@ -88,7 +86,7 @@ async function launchSettingsApp(): Promise<string> {
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-Command', script],
-      { encoding: 'utf8' },
+      { encoding: 'utf8', timeout: 20000 },
       (error, stdout) => {
         if (error) {
           reject(error)
@@ -105,7 +103,6 @@ async function killSettingsApp(targetPid?: string): Promise<void> {
   await runPowerShell(
     [
       '$processes = @()',
-      '$processes += Get-Process -Name SystemSettings -ErrorAction SilentlyContinue',
       ...(targetPid ? [`$processes += Get-Process -Id ${targetPid} -ErrorAction SilentlyContinue`] : []),
       'foreach ($process in $processes) {',
       '  try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { }',
@@ -118,7 +115,7 @@ async function killSettingsApp(targetPid?: string): Promise<void> {
 async function runPowerShell(script: string): Promise<void> {
   const { execFile } = await import('node:child_process')
   await new Promise<void>((resolve, reject) => {
-    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], (error) => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: 20000 }, (error) => {
       if (error) {
         reject(error)
         return
