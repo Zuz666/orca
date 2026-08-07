@@ -56,7 +56,7 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
       expect(state.result.snapshot.treeText.length).toBeGreaterThan(0)
     } finally {
       if (targetHwnd && targetPid !== undefined && targetAppPid !== undefined) {
-        await killSettingsApp(targetHwnd, targetPid, targetAppPid)
+        await closeSettingsFrame(targetHwnd, targetPid, targetAppPid)
       } else {
         // Fallback cleanup skipped: terminating by name breaks CI isolation and user environments.
         console.warn('Launch timed out or failed, skipping teardown to avoid killing unrelated UWP apps.')
@@ -89,24 +89,32 @@ async function runSettingsFrameScript(scriptArgs: string[], timeoutMs: number): 
   )
   return stdout
 }
-
 async function launchSettingsApp(): Promise<{ FramePid: number; FrameHwnd: string; AppPid: number }> {
   const stdout = await runSettingsFrameScript(
     ['-Action', 'Launch', '-TimeoutMilliseconds', '15000'],
-    20000
+    45000
   )
+  let parsed: Record<string, unknown>
   try {
-    const parsed = JSON.parse(stdout.trim()) as Record<string, unknown>
-    if (typeof parsed.FramePid !== 'number' || typeof parsed.FrameHwnd !== 'string' || typeof parsed.AppPid !== 'number') {
-      throw new Error(`Invalid SettingsFrameLauncher payload: ${stdout}`)
-    }
-    return parsed as { FramePid: number; FrameHwnd: string; AppPid: number }
-  } catch (error) {
-    throw new Error(`Failed to parse SettingsFrameLauncher output as JSON.\nStdout: ${stdout}\nError: ${error instanceof Error ? error.message : String(error)}`)
+    parsed = JSON.parse(stdout.trim()) as Record<string, unknown>
+  } catch (parseError) {
+    throw new Error(`Failed to parse SettingsFrameLauncher output as JSON.\nStdout: ${stdout}\nError: ${parseError instanceof Error ? parseError.message : String(parseError)}`)
   }
+
+  if (
+    !Number.isSafeInteger(parsed.FramePid) ||
+    (parsed.FramePid as number) <= 0 ||
+    !Number.isSafeInteger(parsed.AppPid) ||
+    (parsed.AppPid as number) <= 0 ||
+    typeof parsed.FrameHwnd !== 'string' ||
+    !/^0x[0-9a-f]+$/i.test(parsed.FrameHwnd)
+  ) {
+    throw new Error(`Invalid SettingsFrameLauncher payload shape: ${stdout}`)
+  }
+  return parsed as { FramePid: number; FrameHwnd: string; AppPid: number }
 }
 
-async function killSettingsApp(hwnd: string, framePid: number, appPid: number): Promise<void> {
+async function closeSettingsFrame(hwnd: string, framePid: number, appPid: number): Promise<void> {
   try {
     const stdout = await runSettingsFrameScript(
       ['-Action', 'Close', '-Hwnd', hwnd, '-FramePid', String(framePid), '-AppPid', String(appPid), '-TimeoutMilliseconds', '5000'],
@@ -114,9 +122,9 @@ async function killSettingsApp(hwnd: string, framePid: number, appPid: number): 
     )
     const result = JSON.parse(stdout.trim()) as Record<string, unknown>
     if (result.Closed !== true) {
-      console.warn(`Settings frame ${hwnd} identity mismatch or close failed. Cleanup aborted to preserve isolation.`)
+      throw new Error(`Settings frame ${hwnd} identity mismatch or close failed. Cleanup aborted to preserve isolation.`)
     }
   } catch (error) {
-    console.warn(`Failed to close Settings frame ${hwnd}:`, error)
+    throw new Error(`Failed to close Settings frame ${hwnd}: ${error instanceof Error ? error.message : String(error)}`)
   }
 }

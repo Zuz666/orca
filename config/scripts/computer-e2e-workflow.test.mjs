@@ -32,10 +32,13 @@ describe('computer-use e2e workflow', () => {
     expect(cliDriver).toContain("'serve', '--no-pairing', '--json'")
 
     expect(windowsStoreE2e).toMatch(
-      /for \(const buttonName of \['One', 'Plus', 'Two', 'Equals'\]\) \{[\s\S]*findRoleIndex\(state\.result\.snapshot\.treeText, `button \$\{buttonName\}`\)[\s\S]*state = parseJsonOutput/
+      /'--window-id',\s*BigInt\(targetHwnd\)\.toString\(10\)/
     )
-    expect(windowsStoreE2e).not.toMatch(/const one = findRoleIndex/)
-    expect(windowsStoreE2e).not.toMatch(/for \(const index of \[one, plus, two, equals\]\)/)
+    expect(windowsStoreE2e).toContain("'-FramePid'")
+    expect(windowsStoreE2e).toContain("'-AppPid'")
+
+    expect(windowsStoreE2e).not.toContain('findRoleIndex')
+    expect(windowsStoreE2e).not.toContain("'One', 'Plus', 'Two', 'Equals'")
   })
 
   it('triggers on computer-use shared contracts, scripts, and agent skill changes', () => {
