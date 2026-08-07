@@ -50,6 +50,7 @@ on:
       - 'tests/e2e/computer-mac-safari.e2e.ts'
       - 'tests/e2e/computer-windows.e2e.ts'
       - 'tests/e2e/computer-windows-store.e2e.ts'
+      - 'tests/e2e/helpers/Invoke-SettingsApplicationFrame.ps1'
       - 'tests/e2e/helpers/computer-cli-driver.ts'
       - 'tests/e2e/helpers/computer-driver.ts'
       - 'tests/e2e/vitest.config.ts'

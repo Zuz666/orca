@@ -31,14 +31,6 @@ describe('computer-use e2e workflow', () => {
     expect(cliDriver).toContain('Could not read Orca runtime metadata')
     expect(cliDriver).toContain("'serve', '--no-pairing', '--json'")
 
-    expect(windowsStoreE2e).toMatch(
-      /'--window-id',\s*BigInt\(targetHwnd\)\.toString\(10\)/
-    )
-    expect(windowsStoreE2e).toContain("'-FramePid'")
-    expect(windowsStoreE2e).toContain("'-AppPid'")
-
-    expect(windowsStoreE2e).not.toContain('findRoleIndex')
-    expect(windowsStoreE2e).not.toContain("'One', 'Plus', 'Two', 'Equals'")
   })
 
   it('triggers on computer-use shared contracts, scripts, and agent skill changes', () => {
@@ -65,6 +57,27 @@ describe('computer-use e2e workflow', () => {
       ])
     )
     expect(triggerPaths).not.toContain('src/shared/runtime-types.ts')
+  })
+
+  it('triggers when the Windows Store E2E test or its launcher changes', () => {
+    const workflow = parse(
+      readFileSync(join(projectDir, '.github/workflows/computer-e2e.yml'), 'utf8')
+    )
+
+    expect(workflow.on.pull_request.paths).toEqual(
+      expect.arrayContaining([
+        'tests/e2e/computer-windows-store.e2e.ts',
+        'tests/e2e/helpers/Invoke-SettingsApplicationFrame.ps1'
+      ])
+    )
+
+    const windowsRuns = workflow.jobs.windows.steps
+      .map((step) => step.run)
+      .filter((run) => typeof run === 'string')
+
+    expect(windowsRuns).toContain(
+      'pnpm test:e2e:computer --reporter=verbose tests/e2e/computer-windows.e2e.ts tests/e2e/computer-windows-store.e2e.ts'
+    )
   })
 
   it('runs focused computer-use regression tests in the PR native-smoke job', () => {

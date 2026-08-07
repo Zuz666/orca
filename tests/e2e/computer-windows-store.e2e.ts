@@ -9,6 +9,14 @@ import {
   runOrcaCli,
   stopOrcaRuntime
 } from './helpers/computer-driver'
+import {
+  buildCloseSettingsArgs,
+  buildGetSettingsStateArgs,
+  parseSettingsCloseOutput,
+  parseSettingsLaunchOutput,
+  type SettingsFrame
+} from './helpers/windows-settings-frame'
+
 const execFileAsync = promisify(execFile)
 
 const isWindows = process.platform === 'win32'
@@ -19,44 +27,28 @@ const e2eOptIn = process.env.ORCA_COMPUTER_E2E === '1'
 // any pre-existing Settings window in the same session.
 describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)', () => {
   test('Store app windows are discoverable and attachable by pid', { timeout: 120_000 }, async () => {
-    let targetHwnd: string | undefined
-    let targetPid: number | undefined
-    let targetAppPid: number | undefined
+    let frame: SettingsFrame | undefined
     let primaryError: unknown
     let hasPrimaryError = false
 
     try {
       await ensureOrcaRuntimeLaunched()
 
-      const frame = await launchSettingsApp()
-      targetPid = frame.FramePid
-      targetAppPid = frame.AppPid
-      targetHwnd = frame.FrameHwnd
+      frame = await launchSettingsApp()
 
       const apps = parseJsonOutput<{ result: ComputerListAppsResult }>(
         (await runOrcaCli(['computer', 'list-apps', '--json'])).stdout
       )
       expect(apps.result.apps).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ bundleId: 'ApplicationFrameHost', pid: targetPid })
+          expect.objectContaining({ bundleId: 'ApplicationFrameHost', pid: frame.FramePid })
         ])
       )
       const state = parseJsonOutput<{ result: ComputerSnapshotResult }>(
-        (
-          await runOrcaCli([
-            'computer',
-            'get-app-state',
-            '--app',
-            `pid:${targetPid}`,
-            '--window-id',
-            BigInt(targetHwnd).toString(10),
-            '--no-screenshot',
-            '--json'
-          ])
-        ).stdout
+        (await runOrcaCli(buildGetSettingsStateArgs(frame))).stdout
       )
       // Ensure the snapshot returned belongs to our targeted app
-      expect(state.result.snapshot.app.pid).toBe(targetPid)
+      expect(state.result.snapshot.app.pid).toBe(frame.FramePid)
       expect(state.result.snapshot.treeText.length).toBeGreaterThan(0)
     } catch (error) {
       hasPrimaryError = true
@@ -65,9 +57,9 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
 
     const cleanupErrors: unknown[] = []
 
-    if (targetHwnd && targetPid !== undefined && targetAppPid !== undefined) {
+    if (frame) {
       try {
-        await closeSettingsFrame(targetHwnd, targetPid, targetAppPid)
+        await closeSettingsFrame(frame)
       } catch (error) {
         cleanupErrors.push(error)
       }
@@ -91,6 +83,7 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
     }
   })
 })
+
 const settingsFrameScript = join(__dirname, 'helpers', 'Invoke-SettingsApplicationFrame.ps1')
 
 async function runSettingsFrameScript(scriptArgs: string[], timeoutMs: number): Promise<string> {
@@ -115,42 +108,21 @@ async function runSettingsFrameScript(scriptArgs: string[], timeoutMs: number): 
   )
   return stdout
 }
-async function launchSettingsApp(): Promise<{ FramePid: number; FrameHwnd: string; AppPid: number }> {
+
+async function launchSettingsApp(): Promise<SettingsFrame> {
   const stdout = await runSettingsFrameScript(
     ['-Action', 'Launch', '-TimeoutMilliseconds', '15000'],
     45000
   )
-  let parsed: Record<string, unknown>
-  try {
-    parsed = JSON.parse(stdout.trim()) as Record<string, unknown>
-  } catch (parseError) {
-    throw new Error(`Failed to parse SettingsFrameLauncher output as JSON.\nStdout: ${stdout}\nError: ${parseError instanceof Error ? parseError.message : String(parseError)}`)
-  }
-
-  if (
-    !Number.isSafeInteger(parsed.FramePid) ||
-    (parsed.FramePid as number) <= 0 ||
-    !Number.isSafeInteger(parsed.AppPid) ||
-    (parsed.AppPid as number) <= 0 ||
-    typeof parsed.FrameHwnd !== 'string' ||
-    !/^0x[0-9a-f]+$/i.test(parsed.FrameHwnd)
-  ) {
-    throw new Error(`Invalid SettingsFrameLauncher payload shape: ${stdout}`)
-  }
-  return parsed as { FramePid: number; FrameHwnd: string; AppPid: number }
+  return parseSettingsLaunchOutput(stdout)
 }
 
-async function closeSettingsFrame(hwnd: string, framePid: number, appPid: number): Promise<void> {
-  try {
-    const stdout = await runSettingsFrameScript(
-      ['-Action', 'Close', '-Hwnd', hwnd, '-FramePid', String(framePid), '-AppPid', String(appPid), '-TimeoutMilliseconds', '5000'],
-      10000
+async function closeSettingsFrame(frame: SettingsFrame): Promise<void> {
+  const stdout = await runSettingsFrameScript(buildCloseSettingsArgs(frame), 10000)
+  const result = parseSettingsCloseOutput(stdout)
+  if (result.Status !== 'Closed' && result.Status !== 'AlreadyGone') {
+    throw new Error(
+      `Settings frame ${frame.FrameHwnd} teardown returned status "${result.Status}" (identity mismatch or failure).`
     )
-    const result = JSON.parse(stdout.trim()) as Record<string, unknown>
-    if (result.Status !== 'Closed' && result.Status !== 'AlreadyGone') {
-      throw new Error(`Settings frame ${hwnd} teardown returned status "${result.Status}" (identity mismatch or failure).`)
-    }
-  } catch (error) {
-    throw new Error(`Failed to close Settings frame ${hwnd}: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
