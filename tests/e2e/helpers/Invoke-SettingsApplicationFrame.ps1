@@ -9,6 +9,7 @@ param(
     [int]$TimeoutMilliseconds = 15000
 )
 
+$ErrorActionPreference = 'Stop'
 if (-not ('SettingsFrameLauncher' -as [type])) {
 Add-Type -TypeDefinition @'
 using System;

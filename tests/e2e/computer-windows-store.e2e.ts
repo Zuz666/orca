@@ -61,6 +61,8 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
           ])
         ).stdout
       )
+      // Ensure the snapshot returned after the click still belongs to our targeted app
+      expect(state.result.snapshot.app.pid).toBe(Number.parseInt(targetPid!, 10))
       expect(state.result.snapshot.treeText.length).toBeGreaterThan(0)
     } finally {
       if (targetHwnd) {
@@ -72,8 +74,9 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
 })
 const execFileAsync = promisify(execFile)
 
-async function launchSettingsApp(): Promise<{ FramePid: number; FrameHwnd: string }> {
-  const scriptPath = join(__dirname, 'helpers', 'Invoke-SettingsApplicationFrame.ps1')
+const settingsFrameScript = join(__dirname, 'helpers', 'Invoke-SettingsApplicationFrame.ps1')
+
+async function runSettingsFrameScript(scriptArgs: string[], timeoutMs: number): Promise<string> {
   const { stdout } = await execFileAsync(
     'powershell.exe',
     [
@@ -83,44 +86,31 @@ async function launchSettingsApp(): Promise<{ FramePid: number; FrameHwnd: strin
       '-ExecutionPolicy',
       'Bypass',
       '-File',
-      scriptPath,
-      '-Action',
-      'Launch',
-      '-TimeoutMilliseconds',
-      '15000'
+      settingsFrameScript,
+      ...scriptArgs
     ],
     {
       windowsHide: true,
       encoding: 'utf8',
-      timeout: 20000
+      timeout: timeoutMs
     }
+  )
+  return stdout
+}
+
+async function launchSettingsApp(): Promise<{ FramePid: number; FrameHwnd: string }> {
+  const stdout = await runSettingsFrameScript(
+    ['-Action', 'Launch', '-TimeoutMilliseconds', '15000'],
+    20000
   )
   return JSON.parse(stdout.trim())
 }
 
 async function killSettingsApp(hwnd: string): Promise<void> {
-  const scriptPath = join(__dirname, 'helpers', 'Invoke-SettingsApplicationFrame.ps1')
-  await execFileAsync(
-    'powershell.exe',
-    [
-      '-NoLogo',
-      '-NoProfile',
-      '-NonInteractive',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-File',
-      scriptPath,
-      '-Action',
-      'Close',
-      '-Hwnd',
-      hwnd,
-      '-TimeoutMilliseconds',
-      '5000'
-    ],
-    {
-      windowsHide: true,
-      encoding: 'utf8',
-      timeout: 10000
-    }
-  ).catch(() => undefined)
+  await runSettingsFrameScript(
+    ['-Action', 'Close', '-Hwnd', hwnd, '-TimeoutMilliseconds', '5000'],
+    10000
+  ).catch((error: unknown) => {
+    console.warn(`Failed to close Settings frame ${hwnd}:`, error)
+  })
 }
