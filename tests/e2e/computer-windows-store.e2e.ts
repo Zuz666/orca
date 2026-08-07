@@ -16,13 +16,15 @@ const isWindows = process.platform === 'win32'
 const e2eOptIn = process.env.ORCA_COMPUTER_E2E === '1'
 
 describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)', () => {
-  test('Store app windows are discoverable by title and clickable', async () => {
+  test('Store app windows are discoverable and attachable by pid', async () => {
     await ensureOrcaRuntimeLaunched()
     let targetHwnd: string | undefined
     let targetPid: number | undefined
+    let targetAppPid: number | undefined
     try {
       const frame = await launchSettingsApp()
       targetPid = frame.FramePid
+      targetAppPid = frame.AppPid
       targetHwnd = frame.FrameHwnd
 
       const apps = parseJsonOutput<{ result: ComputerListAppsResult }>(
@@ -49,8 +51,8 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
       expect(state.result.snapshot.app.pid).toBe(targetPid)
       expect(state.result.snapshot.treeText.length).toBeGreaterThan(0)
     } finally {
-      if (targetHwnd && targetPid !== undefined) {
-        await killSettingsApp(targetHwnd, targetPid)
+      if (targetHwnd && targetPid !== undefined && targetAppPid !== undefined) {
+        await killSettingsApp(targetHwnd, targetPid, targetAppPid)
       } else {
         // Fallback cleanup skipped: terminating by name breaks CI isolation and user environments.
         console.warn('Launch timed out or failed, skipping teardown to avoid killing unrelated UWP apps.')
@@ -84,21 +86,25 @@ async function runSettingsFrameScript(scriptArgs: string[], timeoutMs: number): 
   return stdout
 }
 
-async function launchSettingsApp(): Promise<{ FramePid: number; FrameHwnd: string }> {
+async function launchSettingsApp(): Promise<{ FramePid: number; FrameHwnd: string; AppPid: number }> {
   const stdout = await runSettingsFrameScript(
     ['-Action', 'Launch', '-TimeoutMilliseconds', '15000'],
     20000
   )
   try {
-    return JSON.parse(stdout.trim())
+    const parsed = JSON.parse(stdout.trim()) as Record<string, unknown>
+    if (typeof parsed.FramePid !== 'number' || typeof parsed.FrameHwnd !== 'string' || typeof parsed.AppPid !== 'number') {
+      throw new Error(`Invalid SettingsFrameLauncher payload: ${stdout}`)
+    }
+    return parsed as { FramePid: number; FrameHwnd: string; AppPid: number }
   } catch (error) {
     throw new Error(`Failed to parse SettingsFrameLauncher output as JSON.\nStdout: ${stdout}\nError: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
-async function killSettingsApp(hwnd: string, framePid: number): Promise<void> {
+async function killSettingsApp(hwnd: string, framePid: number, appPid: number): Promise<void> {
   await runSettingsFrameScript(
-    ['-Action', 'Close', '-Hwnd', hwnd, '-FramePid', String(framePid), '-TimeoutMilliseconds', '5000'],
+    ['-Action', 'Close', '-Hwnd', hwnd, '-FramePid', String(framePid), '-AppPid', String(appPid), '-TimeoutMilliseconds', '5000'],
     10000
   ).catch((error: unknown) => {
     console.warn(`Failed to close Settings frame ${hwnd}:`, error)

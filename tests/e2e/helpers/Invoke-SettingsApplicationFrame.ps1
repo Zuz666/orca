@@ -7,6 +7,8 @@ param(
 
     [uint32]$FramePid,
 
+    [uint32]$AppPid,
+
     [ValidateRange(1, 120000)]
     [int]$TimeoutMilliseconds = 15000
 )
@@ -195,6 +197,7 @@ public static class SettingsFrameLauncher
     public static bool CloseFrameHex(
         string frameHwndHex,
         uint expectedFramePid,
+        uint expectedAppPid,
         int timeoutMilliseconds)
     {
         if (string.IsNullOrWhiteSpace(frameHwndHex))
@@ -207,12 +210,13 @@ public static class SettingsFrameLauncher
             : frameHwndHex;
 
         ulong raw = ulong.Parse(value, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture);
-        return CloseFrame(unchecked((long)raw), expectedFramePid, timeoutMilliseconds);
+        return CloseFrame(unchecked((long)raw), expectedFramePid, expectedAppPid, timeoutMilliseconds);
     }
 
     public static bool CloseFrame(
         long frameHwndValue,
         uint expectedFramePid,
+        uint expectedAppPid,
         int timeoutMilliseconds)
     {
         IntPtr hwnd = new IntPtr(frameHwndValue);
@@ -223,6 +227,9 @@ public static class SettingsFrameLauncher
         if (GetWindowThreadProcessId(hwnd, out ownerPid) == 0 ||
             ownerPid != expectedFramePid ||
             !ProcessNameEquals(ownerPid, "ApplicationFrameHost"))
+            return false;
+
+        if (expectedAppPid != 0 && !HasDescendantOwnedBy(hwnd, expectedAppPid))
             return false;
 
         if (!PostMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero))
@@ -398,15 +405,20 @@ switch ($Action) {
         if ($FramePid -eq 0) {
             throw '-FramePid is required for -Action Close.'
         }
+        if ($AppPid -eq 0) {
+            throw '-AppPid is required for -Action Close.'
+        }
 
         $closed = [SettingsFrameLauncher]::CloseFrameHex(
             $Hwnd,
             $FramePid,
+            $AppPid,
             $TimeoutMilliseconds
         )
         [pscustomobject]@{
             Closed    = $closed
             FramePid  = $FramePid
+            AppPid    = $AppPid
             FrameHwnd = $Hwnd
         } | ConvertTo-Json -Compress
     }
