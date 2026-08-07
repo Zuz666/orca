@@ -48,7 +48,6 @@ public static class SettingsFrameLauncher
     private const uint CLSCTX_LOCAL_SERVER = 0x4;
     private const uint AO_NOERRORUI = 0x2;
     private const uint WM_CLOSE = 0x0010;
-    private const int RPC_E_CHANGED_MODE = unchecked((int)0x80010106);
     private const uint COINIT_APARTMENTTHREADED = 0x2;
 
     private static readonly Guid ActivationManagerClsid =
@@ -85,7 +84,7 @@ public static class SettingsFrameLauncher
         ref Guid iid,
         out IntPtr instance);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
 
@@ -335,15 +334,6 @@ public static class SettingsFrameLauncher
                HasDescendantOwnedBy(hwnd, info.AppPid);
     }
 
-    private static bool IsWindowOwnedByProcess(IntPtr hwnd, uint expectedPid)
-    {
-        if (!IsWindow(hwnd))
-            return false;
-
-        uint ownerPid;
-        return GetWindowThreadProcessId(hwnd, out ownerPid) != 0 &&
-               ownerPid == expectedPid;
-    }
 
     private static bool ProcessNameEquals(uint pid, string expected)
     {

@@ -18,11 +18,6 @@ describe('computer-use e2e workflow', () => {
       join(projectDir, 'tests/e2e/helpers/computer-cli-driver.ts'),
       'utf8'
     )
-    const windowsStoreE2e = readFileSync(
-      join(projectDir, 'tests/e2e/computer-windows-store.e2e.ts'),
-      'utf8'
-    )
-
     expect(driver).not.toContain('await delay(3500)')
     expect(driver).toContain("await waitForComputerWindowTitle('gedit', fileName, 15000)")
     expect(cliDriver).toContain('ORCA_DEV_USER_DATA_PATH')
@@ -30,7 +25,6 @@ describe('computer-use e2e workflow', () => {
     expect(cliDriver).toContain('retryMissingRuntimeMetadata')
     expect(cliDriver).toContain('Could not read Orca runtime metadata')
     expect(cliDriver).toContain("'serve', '--no-pairing', '--json'")
-
   })
 
   it('triggers on computer-use shared contracts, scripts, and agent skill changes', () => {
@@ -98,6 +92,7 @@ describe('computer-use e2e workflow', () => {
       'config/scripts/computer-use-modifier-safety.test.mjs',
       'config/scripts/computer-use-skill-guidance.test.mjs',
       'config/scripts/computer-use-smoke.test.mjs',
+      'tests/e2e/helpers/windows-settings-frame.unit.test.ts',
       'src/main/computer/computer-provider-lifecycle.test.ts',
       'src/main/computer/computer-provider-unavailable-message.test.ts',
       'src/main/computer/sidecar-client.test.ts',

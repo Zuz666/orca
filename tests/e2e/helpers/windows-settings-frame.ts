@@ -1,17 +1,21 @@
-export interface SettingsFrame {
+export type SettingsFrame = {
   FramePid: number
   AppPid: number
   FrameHwnd: string
 }
 
-export interface SettingsCloseResult {
-  Status: string
+export type SettingsCloseStatus = 'Closed' | 'AlreadyGone' | 'IdentityMismatch'
+
+export type SettingsCloseResult = {
+  Status: SettingsCloseStatus
 }
 
+const CLOSE_STATUSES = ['Closed', 'AlreadyGone', 'IdentityMismatch'] as const
+
 export function parseSettingsLaunchOutput(stdout: string): SettingsFrame {
-  let parsed: Record<string, unknown>
+  let parsed: unknown
   try {
-    parsed = JSON.parse(stdout.trim()) as Record<string, unknown>
+    parsed = JSON.parse(stdout.trim())
   } catch (parseError) {
     throw new Error(
       `Failed to parse SettingsFrameLauncher output as JSON.\nStdout: ${stdout}\nError: ${parseError instanceof Error ? parseError.message : String(parseError)}`
@@ -19,25 +23,40 @@ export function parseSettingsLaunchOutput(stdout: string): SettingsFrame {
   }
 
   if (
-    !Number.isSafeInteger(parsed.FramePid) ||
-    (parsed.FramePid as number) <= 0 ||
-    !Number.isSafeInteger(parsed.AppPid) ||
-    (parsed.AppPid as number) <= 0 ||
-    typeof parsed.FrameHwnd !== 'string' ||
-    !/^0x[0-9a-f]+$/i.test(parsed.FrameHwnd)
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    Array.isArray(parsed) ||
+    !Number.isSafeInteger((parsed as Record<string, unknown>).FramePid) ||
+    ((parsed as Record<string, unknown>).FramePid as number) <= 0 ||
+    !Number.isSafeInteger((parsed as Record<string, unknown>).AppPid) ||
+    ((parsed as Record<string, unknown>).AppPid as number) <= 0 ||
+    typeof (parsed as Record<string, unknown>).FrameHwnd !== 'string' ||
+    !/^0x[0-9a-f]+$/i.test((parsed as Record<string, unknown>).FrameHwnd as string)
   ) {
     throw new Error(`Invalid SettingsFrameLauncher payload shape: ${stdout}`)
   }
 
-  return parsed as unknown as SettingsFrame
+  return parsed as SettingsFrame
 }
 
 export function parseSettingsCloseOutput(stdout: string): SettingsCloseResult {
-  const parsed = JSON.parse(stdout.trim()) as Record<string, unknown>
-  if (typeof parsed.Status !== 'string') {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(stdout.trim())
+  } catch {
+    throw new Error(`Failed to parse SettingsFrameLauncher close output as JSON: ${stdout}`)
+  }
+
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    typeof (parsed as Record<string, unknown>).Status !== 'string' ||
+    !CLOSE_STATUSES.includes((parsed as Record<string, unknown>).Status as SettingsCloseStatus)
+  ) {
     throw new Error(`Invalid SettingsFrameLauncher close payload: ${stdout}`)
   }
-  return parsed as unknown as SettingsCloseResult
+
+  return parsed as SettingsCloseResult
 }
 
 export function buildGetSettingsStateArgs(frame: SettingsFrame): string[] {

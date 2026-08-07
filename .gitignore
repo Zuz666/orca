@@ -159,4 +159,4 @@ tests/e2e/.cross-version-checkouts/
 # vendored gems.
 /mobile/vendor/
 # PowerShell module analysis cache dumped in local dir
-/Microsoft/
+/Microsoft/Windows/PowerShell/

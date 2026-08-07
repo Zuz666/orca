@@ -23,11 +23,12 @@ describe('windows-settings-frame helpers', () => {
       ])
     })
 
-    it('converts large 64-bit HWND to decimal without precision loss', () => {
-      const frame = { FramePid: 1, AppPid: 2, FrameHwnd: '0x1FFFFFFFF' }
+    it('converts HWND above Number.MAX_SAFE_INTEGER without precision loss', () => {
+      // Why: 0x20000000000001 = 9007199254740993 > 2^53. Using Number() would round to 9007199254740992.
+      const frame = { FramePid: 1, AppPid: 2, FrameHwnd: '0x20000000000001' }
       const args = buildGetSettingsStateArgs(frame)
       const windowIdIndex = args.indexOf('--window-id')
-      expect(args[windowIdIndex + 1]).toBe('8589934591')
+      expect(args[windowIdIndex + 1]).toBe('9007199254740993')
     })
   })
 
@@ -64,30 +65,41 @@ describe('windows-settings-frame helpers', () => {
       )
     })
 
+    it('throws on null JSON', () => {
+      expect(() => parseSettingsLaunchOutput('null')).toThrow(
+        /Invalid SettingsFrameLauncher payload shape/
+      )
+    })
+
     it('throws on valid JSON with invalid payload shape', () => {
       expect(() => parseSettingsLaunchOutput('{"foo":"bar"}')).toThrow(
         /Invalid SettingsFrameLauncher payload shape/
       )
     })
 
-    it('throws on zero or negative PID', () => {
-      expect(() =>
-        parseSettingsLaunchOutput('{"AppPid":0,"FramePid":123,"FrameHwnd":"0x1"}')
-      ).toThrow(/Invalid SettingsFrameLauncher payload shape/)
-      expect(() =>
-        parseSettingsLaunchOutput('{"AppPid":-1,"FramePid":123,"FrameHwnd":"0x1"}')
-      ).toThrow(/Invalid SettingsFrameLauncher payload shape/)
+    it.each([
+      ['AppPid', 0],
+      ['AppPid', -1],
+      ['AppPid', 1.5],
+      ['FramePid', 0],
+      ['FramePid', -1],
+      ['FramePid', 1.5]
+    ] as const)('rejects invalid %s=%s', (field, value) => {
+      const payload = {
+        AppPid: 1,
+        FramePid: 2,
+        FrameHwnd: '0x1',
+        [field]: value
+      }
+
+      expect(() => parseSettingsLaunchOutput(JSON.stringify(payload))).toThrow(
+        /Invalid SettingsFrameLauncher payload shape/
+      )
     })
 
     it('throws on non-hex HWND', () => {
       expect(() =>
         parseSettingsLaunchOutput('{"AppPid":1,"FramePid":2,"FrameHwnd":"1234"}')
-      ).toThrow(/Invalid SettingsFrameLauncher payload shape/)
-    })
-
-    it('throws on fractional PID', () => {
-      expect(() =>
-        parseSettingsLaunchOutput('{"AppPid":1.5,"FramePid":2,"FrameHwnd":"0x1"}')
       ).toThrow(/Invalid SettingsFrameLauncher payload shape/)
     })
   })
@@ -112,6 +124,24 @@ describe('windows-settings-frame helpers', () => {
     it('throws on missing Status field', () => {
       expect(() => parseSettingsCloseOutput('{"foo":"bar"}')).toThrow(
         /Invalid SettingsFrameLauncher close payload/
+      )
+    })
+
+    it('throws on unknown Status value', () => {
+      expect(() => parseSettingsCloseOutput('{"Status":"Unknown"}')).toThrow(
+        /Invalid SettingsFrameLauncher close payload/
+      )
+    })
+
+    it('throws on null JSON', () => {
+      expect(() => parseSettingsCloseOutput('null')).toThrow(
+        /Invalid SettingsFrameLauncher close payload/
+      )
+    })
+
+    it('throws on malformed JSON', () => {
+      expect(() => parseSettingsCloseOutput('not json')).toThrow(
+        /Failed to parse SettingsFrameLauncher close output as JSON/
       )
     })
   })

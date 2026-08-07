@@ -118,7 +118,7 @@ async function launchSettingsApp(): Promise<SettingsFrame> {
 }
 
 async function closeSettingsFrame(frame: SettingsFrame): Promise<void> {
-  const stdout = await runSettingsFrameScript(buildCloseSettingsArgs(frame), 10000)
+  const stdout = await runSettingsFrameScript(buildCloseSettingsArgs(frame), 30000)
   const result = parseSettingsCloseOutput(stdout)
   if (result.Status !== 'Closed' && result.Status !== 'AlreadyGone') {
     throw new Error(
