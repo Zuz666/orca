@@ -5,11 +5,15 @@ param(
 
     [string]$Hwnd,
 
+    [uint32]$FramePid,
+
     [ValidateRange(1, 120000)]
     [int]$TimeoutMilliseconds = 15000
 )
 
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
 if (-not ('SettingsFrameLauncher' -as [type])) {
 Add-Type -TypeDefinition @'
 using System;
@@ -188,39 +192,59 @@ public static class SettingsFrameLauncher
         }
     }
 
-    public static void CloseFrameHex(string frameHwndHex, int timeoutMilliseconds)
+    public static bool CloseFrameHex(
+        string frameHwndHex,
+        uint expectedFramePid,
+        int timeoutMilliseconds)
     {
         if (string.IsNullOrWhiteSpace(frameHwndHex))
             throw new ArgumentException("A window handle is required.", "frameHwndHex");
+        if (expectedFramePid == 0)
+            throw new ArgumentOutOfRangeException("expectedFramePid");
 
         string value = frameHwndHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
             ? frameHwndHex.Substring(2)
             : frameHwndHex;
 
         ulong raw = ulong.Parse(value, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture);
-        CloseFrame(unchecked((long)raw), timeoutMilliseconds);
+        return CloseFrame(unchecked((long)raw), expectedFramePid, timeoutMilliseconds);
     }
 
-    public static void CloseFrame(long frameHwndValue, int timeoutMilliseconds)
+    public static bool CloseFrame(
+        long frameHwndValue,
+        uint expectedFramePid,
+        int timeoutMilliseconds)
     {
         IntPtr hwnd = new IntPtr(frameHwndValue);
         if (!IsWindow(hwnd))
-            return;
+            return false;
 
         uint ownerPid;
         if (GetWindowThreadProcessId(hwnd, out ownerPid) == 0 ||
+            ownerPid != expectedFramePid ||
             !ProcessNameEquals(ownerPid, "ApplicationFrameHost"))
-            return;
+            return false;
 
         if (!PostMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero))
+        {
+            // The target may have closed between PID verification and PostMessage.
+            if (!IsWindowOwnedByProcess(hwnd, expectedFramePid))
+                return false;
+
             throw new Win32Exception(Marshal.GetLastWin32Error(), "PostMessage(WM_CLOSE) failed");
+        }
 
         Stopwatch timer = Stopwatch.StartNew();
-        while (IsWindow(hwnd) && timer.ElapsedMilliseconds < timeoutMilliseconds)
+        while (IsWindowOwnedByProcess(hwnd, expectedFramePid) &&
+               timer.ElapsedMilliseconds < timeoutMilliseconds)
             Thread.Sleep(50);
 
-        if (IsWindow(hwnd))
-            throw new TimeoutException("The Settings frame did not close in time: " + frameHwndValue);
+        if (IsWindowOwnedByProcess(hwnd, expectedFramePid))
+            throw new TimeoutException(
+                "The Settings frame did not close in time: HWND=" + frameHwndValue +
+                ", PID=" + expectedFramePid);
+
+        return true;
     }
 
     private static List<SettingsFrameInfo> FindFrames(uint appPid)
@@ -291,6 +315,16 @@ public static class SettingsFrameLauncher
                HasDescendantOwnedBy(hwnd, info.AppPid);
     }
 
+    private static bool IsWindowOwnedByProcess(IntPtr hwnd, uint expectedPid)
+    {
+        if (!IsWindow(hwnd))
+            return false;
+
+        uint ownerPid;
+        return GetWindowThreadProcessId(hwnd, out ownerPid) != 0 &&
+               ownerPid == expectedPid;
+    }
+
     private static bool ProcessNameEquals(uint pid, string expected)
     {
         try
@@ -344,7 +378,6 @@ public static class SettingsFrameLauncher
 '@
 }
 
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 switch ($Action) {
     'Launch' {
@@ -362,8 +395,19 @@ switch ($Action) {
         if ([string]::IsNullOrWhiteSpace($Hwnd)) {
             throw '-Hwnd is required for -Action Close.'
         }
-        [SettingsFrameLauncher]::CloseFrameHex($Hwnd, $TimeoutMilliseconds)
-        [pscustomobject]@{ Closed = $true; FrameHwnd = $Hwnd } |
-            ConvertTo-Json -Compress
+        if ($FramePid -eq 0) {
+            throw '-FramePid is required for -Action Close.'
+        }
+
+        $closed = [SettingsFrameLauncher]::CloseFrameHex(
+            $Hwnd,
+            $FramePid,
+            $TimeoutMilliseconds
+        )
+        [pscustomobject]@{
+            Closed    = $closed
+            FramePid  = $FramePid
+            FrameHwnd = $Hwnd
+        } | ConvertTo-Json -Compress
     }
 }
