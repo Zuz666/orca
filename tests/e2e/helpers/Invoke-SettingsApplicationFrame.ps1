@@ -1,0 +1,368 @@
+[CmdletBinding()]
+param(
+    [ValidateSet('Launch', 'Close')]
+    [string]$Action = 'Launch',
+
+    [string]$Hwnd,
+
+    [ValidateRange(1, 120000)]
+    [int]$TimeoutMilliseconds = 15000
+)
+
+$ErrorActionPreference = 'Stop'
+if (-not ('SettingsFrameLauncher' -as [type])) {
+Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Globalization;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+
+public sealed class SettingsFrameInfo
+{
+    public uint AppPid { get; internal set; }
+    public uint FramePid { get; internal set; }
+    public long FrameHwndValue { get; internal set; }
+    public string FrameHwndHex
+    {
+        get { return "0x" + unchecked((ulong)FrameHwndValue).ToString("X"); }
+    }
+    public string FrameClass { get; internal set; }
+    public string FrameTitle { get; internal set; }
+}
+
+public static class SettingsFrameLauncher
+{
+    private const string SettingsAumid =
+        "windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel";
+
+    private const uint CLSCTX_LOCAL_SERVER = 0x4;
+    private const uint AO_NOERRORUI = 0x2;
+    private const uint WM_CLOSE = 0x0010;
+    private const int RPC_E_CHANGED_MODE = unchecked((int)0x80010106);
+
+    private static readonly Guid ActivationManagerClsid =
+        new Guid("45BA127D-10A8-46EA-8AB7-56EA9078943C");
+    private static readonly Guid ActivationManagerIid =
+        new Guid("2E941141-7F97-4756-BA1D-9DECDE894A3D");
+
+    [ComImport]
+    [Guid("2E941141-7F97-4756-BA1D-9DECDE894A3D")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IApplicationActivationManager
+    {
+        [PreserveSig]
+        int ActivateApplication(
+            [MarshalAs(UnmanagedType.LPWStr)] string appUserModelId,
+            [MarshalAs(UnmanagedType.LPWStr)] string arguments,
+            uint options,
+            out uint processId);
+    }
+
+    private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+
+    [DllImport("ole32.dll", ExactSpelling = true)]
+    private static extern int CoInitializeEx(IntPtr reserved, uint coInit);
+
+    [DllImport("ole32.dll", ExactSpelling = true)]
+    private static extern void CoUninitialize();
+
+    [DllImport("ole32.dll", ExactSpelling = true)]
+    private static extern int CoCreateInstance(
+        ref Guid clsid,
+        IntPtr outer,
+        uint clsContext,
+        ref Guid iid,
+        out IntPtr instance);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumChildWindows(
+        IntPtr parent,
+        EnumWindowsProc callback,
+        IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindow(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hwnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hwnd, StringBuilder text, int maxCount);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int maxCount);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowTextLength(IntPtr hwnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
+
+    public static SettingsFrameInfo Launch(int timeoutMilliseconds)
+    {
+        if (timeoutMilliseconds <= 0)
+            throw new ArgumentOutOfRangeException("timeoutMilliseconds");
+
+        int initHr = CoInitializeEx(IntPtr.Zero, 0); // COINIT_MULTITHREADED
+        bool uninitialize = initHr >= 0;
+        if (initHr < 0 && initHr != RPC_E_CHANGED_MODE)
+            ThrowForHr(initHr, "CoInitializeEx");
+
+        IntPtr rawManager = IntPtr.Zero;
+        IApplicationActivationManager manager = null;
+
+        try
+        {
+            Guid clsid = ActivationManagerClsid;
+            Guid iid = ActivationManagerIid;
+            int hr = CoCreateInstance(
+                ref clsid,
+                IntPtr.Zero,
+                CLSCTX_LOCAL_SERVER,
+                ref iid,
+                out rawManager);
+            ThrowForHr(hr, "CoCreateInstance(CLSID_ApplicationActivationManager)");
+
+            manager = (IApplicationActivationManager)Marshal.GetObjectForIUnknown(rawManager);
+            Marshal.Release(rawManager);
+            rawManager = IntPtr.Zero;
+
+            uint appPid;
+            hr = manager.ActivateApplication(
+                SettingsAumid,
+                null,
+                AO_NOERRORUI,
+                out appPid);
+            ThrowForHr(hr, "IApplicationActivationManager.ActivateApplication");
+
+            Stopwatch timer = Stopwatch.StartNew();
+            List<SettingsFrameInfo> last = new List<SettingsFrameInfo>();
+
+            while (timer.ElapsedMilliseconds < timeoutMilliseconds)
+            {
+                last = FindFrames(appPid);
+                if (last.Count == 1 && IsStillTheSameFrame(last[0]))
+                    return last[0];
+
+                if (!ProcessExists(appPid))
+                    throw new InvalidOperationException(
+                        "The Settings process returned by activation exited before its frame was found. PID=" + appPid);
+
+                Thread.Sleep(50);
+            }
+
+            if (last.Count > 1)
+                throw new InvalidOperationException(
+                    "Activation returned Settings PID " + appPid +
+                    ", but more than one visible ApplicationFrameHost window contains an HWND owned by that PID. " +
+                    "The activation cannot be correlated to one window without an app-level token.");
+
+            throw new TimeoutException(
+                "Activation returned Settings PID " + appPid +
+                ", but no visible ApplicationFrameHost top-level window containing an HWND owned by that PID appeared within " +
+                timeoutMilliseconds + " ms.");
+        }
+        finally
+        {
+            if (manager != null && Marshal.IsComObject(manager))
+                Marshal.FinalReleaseComObject(manager);
+            if (rawManager != IntPtr.Zero)
+                Marshal.Release(rawManager);
+            if (uninitialize)
+                CoUninitialize();
+        }
+    }
+
+    public static void CloseFrameHex(string frameHwndHex, int timeoutMilliseconds)
+    {
+        if (string.IsNullOrWhiteSpace(frameHwndHex))
+            throw new ArgumentException("A window handle is required.", "frameHwndHex");
+
+        string value = frameHwndHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+            ? frameHwndHex.Substring(2)
+            : frameHwndHex;
+
+        ulong raw = ulong.Parse(value, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture);
+        CloseFrame(unchecked((long)raw), timeoutMilliseconds);
+    }
+
+    public static void CloseFrame(long frameHwndValue, int timeoutMilliseconds)
+    {
+        IntPtr hwnd = new IntPtr(frameHwndValue);
+        if (!IsWindow(hwnd))
+            return;
+
+        uint ownerPid;
+        if (GetWindowThreadProcessId(hwnd, out ownerPid) == 0 ||
+            !ProcessNameEquals(ownerPid, "ApplicationFrameHost"))
+            return;
+
+        if (!PostMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero))
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "PostMessage(WM_CLOSE) failed");
+
+        Stopwatch timer = Stopwatch.StartNew();
+        while (IsWindow(hwnd) && timer.ElapsedMilliseconds < timeoutMilliseconds)
+            Thread.Sleep(50);
+
+        if (IsWindow(hwnd))
+            throw new TimeoutException("The Settings frame did not close in time: " + frameHwndValue);
+    }
+
+    private static List<SettingsFrameInfo> FindFrames(uint appPid)
+    {
+        List<SettingsFrameInfo> result = new List<SettingsFrameInfo>();
+
+        EnumWindowsProc topCallback = delegate(IntPtr top, IntPtr ignored)
+        {
+            if (!IsWindowVisible(top))
+                return true;
+
+            uint framePid;
+            if (GetWindowThreadProcessId(top, out framePid) == 0 || framePid == 0 || framePid == appPid)
+                return true;
+
+            if (!ProcessNameEquals(framePid, "ApplicationFrameHost"))
+                return true;
+
+            if (!HasDescendantOwnedBy(top, appPid))
+                return true;
+
+            SettingsFrameInfo info = new SettingsFrameInfo();
+            info.AppPid = appPid;
+            info.FramePid = framePid;
+            info.FrameHwndValue = top.ToInt64();
+            info.FrameClass = ReadClassName(top);
+            info.FrameTitle = ReadWindowText(top);
+            result.Add(info);
+            return true;
+        };
+
+        EnumWindows(topCallback, IntPtr.Zero);
+        GC.KeepAlive(topCallback);
+        return result;
+    }
+
+    private static bool HasDescendantOwnedBy(IntPtr parent, uint appPid)
+    {
+        bool found = false;
+
+        EnumWindowsProc childCallback = delegate(IntPtr child, IntPtr ignored)
+        {
+            uint childPid;
+            if (GetWindowThreadProcessId(child, out childPid) != 0 && childPid == appPid)
+            {
+                found = true;
+                return false;
+            }
+            return true;
+        };
+
+        EnumChildWindows(parent, childCallback, IntPtr.Zero);
+        GC.KeepAlive(childCallback);
+        return found;
+    }
+
+    private static bool IsStillTheSameFrame(SettingsFrameInfo info)
+    {
+        IntPtr hwnd = new IntPtr(info.FrameHwndValue);
+        if (!IsWindow(hwnd))
+            return false;
+
+        uint currentPid;
+        if (GetWindowThreadProcessId(hwnd, out currentPid) == 0 || currentPid != info.FramePid)
+            return false;
+
+        return ProcessNameEquals(currentPid, "ApplicationFrameHost") &&
+               HasDescendantOwnedBy(hwnd, info.AppPid);
+    }
+
+    private static bool ProcessNameEquals(uint pid, string expected)
+    {
+        try
+        {
+            using (Process process = Process.GetProcessById((int)pid))
+                return string.Equals(process.ProcessName, expected, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool ProcessExists(uint pid)
+    {
+        try
+        {
+            using (Process process = Process.GetProcessById((int)pid))
+                return !process.HasExited;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string ReadClassName(IntPtr hwnd)
+    {
+        StringBuilder text = new StringBuilder(256);
+        return GetClassName(hwnd, text, text.Capacity) > 0 ? text.ToString() : string.Empty;
+    }
+
+    private static string ReadWindowText(IntPtr hwnd)
+    {
+        int length = GetWindowTextLength(hwnd);
+        StringBuilder text = new StringBuilder(Math.Max(length + 1, 2));
+        GetWindowText(hwnd, text, text.Capacity);
+        return text.ToString();
+    }
+
+    private static void ThrowForHr(int hr, string operation)
+    {
+        if (hr >= 0)
+            return;
+
+        Exception inner = Marshal.GetExceptionForHR(hr);
+        string detail = inner == null ? "HRESULT 0x" + hr.ToString("X8") : inner.Message;
+        throw new COMException(operation + " failed: " + detail, hr);
+    }
+}
+'@
+}
+
+
+switch ($Action) {
+    'Launch' {
+        $frame = [SettingsFrameLauncher]::Launch($TimeoutMilliseconds)
+        [pscustomobject]@{
+            AppPid      = $frame.AppPid
+            FramePid    = $frame.FramePid
+            FrameHwnd   = $frame.FrameHwndHex
+            FrameClass  = $frame.FrameClass
+            FrameTitle  = $frame.FrameTitle
+        } | ConvertTo-Json -Compress
+    }
+
+    'Close' {
+        if ([string]::IsNullOrWhiteSpace($Hwnd)) {
+            throw '-Hwnd is required for -Action Close.'
+        }
+        [SettingsFrameLauncher]::CloseFrameHex($Hwnd, $TimeoutMilliseconds)
+        [pscustomobject]@{ Closed = $true; FrameHwnd = $Hwnd } |
+            ConvertTo-Json -Compress
+    }
+}
