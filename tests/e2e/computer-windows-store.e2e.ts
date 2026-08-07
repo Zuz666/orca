@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import {
   ensureOrcaRuntimeLaunched,
-  findRoleIndex,
   parseJsonOutput,
   runOrcaCli,
   stopOrcaRuntime
@@ -15,6 +14,9 @@ const execFileAsync = promisify(execFile)
 const isWindows = process.platform === 'win32'
 const e2eOptIn = process.env.ORCA_COMPUTER_E2E === '1'
 
+// Settings is single-instance UWP. This file assumes an isolated CI session:
+// do not run in parallel with other UWP e2e, and expect teardown to close
+// any pre-existing Settings window in the same session.
 describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)', () => {
   test('Store app windows are discoverable and attachable by pid', async () => {
     await ensureOrcaRuntimeLaunched()
@@ -42,6 +44,8 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
             'get-app-state',
             '--app',
             `pid:${targetPid}`,
+            '--window-id',
+            BigInt(targetHwnd).toString(10),
             '--no-screenshot',
             '--json'
           ])
@@ -103,10 +107,16 @@ async function launchSettingsApp(): Promise<{ FramePid: number; FrameHwnd: strin
 }
 
 async function killSettingsApp(hwnd: string, framePid: number, appPid: number): Promise<void> {
-  await runSettingsFrameScript(
-    ['-Action', 'Close', '-Hwnd', hwnd, '-FramePid', String(framePid), '-AppPid', String(appPid), '-TimeoutMilliseconds', '5000'],
-    10000
-  ).catch((error: unknown) => {
+  try {
+    const stdout = await runSettingsFrameScript(
+      ['-Action', 'Close', '-Hwnd', hwnd, '-FramePid', String(framePid), '-AppPid', String(appPid), '-TimeoutMilliseconds', '5000'],
+      10000
+    )
+    const result = JSON.parse(stdout.trim()) as Record<string, unknown>
+    if (result.Closed !== true) {
+      console.warn(`Settings frame ${hwnd} identity mismatch or close failed. Cleanup aborted to preserve isolation.`)
+    }
+  } catch (error) {
     console.warn(`Failed to close Settings frame ${hwnd}:`, error)
-  })
+  }
 }
