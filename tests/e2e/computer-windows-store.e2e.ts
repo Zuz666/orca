@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { ComputerListAppsResult, ComputerSnapshotResult } from '../../src/shared/runtime-types'
+import { execFile } from 'node:child_process'
 import {
   ensureOrcaRuntimeLaunched,
   findRoleIndex,
@@ -14,14 +15,15 @@ const e2eOptIn = process.env.ORCA_COMPUTER_E2E === '1'
 describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)', () => {
   test('Store app windows are discoverable by title and clickable', async () => {
     await ensureOrcaRuntimeLaunched()
-    await launchSettingsApp()
+    let targetPid: string | undefined
+    targetPid = await launchSettingsApp()
     try {
       const apps = parseJsonOutput<{ result: ComputerListAppsResult }>(
         (await runOrcaCli(['computer', 'list-apps', '--json'])).stdout
       )
       expect(apps.result.apps).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ bundleId: 'ApplicationFrameHost' })
+          expect.objectContaining({ bundleId: 'ApplicationFrameHost', pid: Number.parseInt(targetPid!, 10) })
         ])
       )
 
@@ -31,7 +33,7 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
             'computer',
             'get-app-state',
             '--app',
-            'ApplicationFrameHost',
+            `pid:${targetPid}`,
             '--no-screenshot',
             '--json'
           ])
@@ -46,7 +48,7 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
             'computer',
             'click',
             '--app',
-            'ApplicationFrameHost',
+            `pid:${targetPid}`,
             '--element-index',
             String(index),
             '--no-screenshot',
@@ -56,36 +58,55 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
       )
       expect(state.result.snapshot.treeText.length).toBeGreaterThan(0)
     } finally {
-      await killSettingsApp()
+      await killSettingsApp(targetPid)
       await stopOrcaRuntime()
     }
   })
 })
+async function launchSettingsApp(): Promise<string> {
+  // Ensure no stale Settings process prevents a new host from spawning
+  await runPowerShell('Get-Process -Name SystemSettings -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; exit 0')
 
-async function launchSettingsApp(): Promise<void> {
-  await runPowerShell('Start-Process ms-settings:')
-  await runPowerShell(
-    [
-      '$deadline = (Get-Date).AddSeconds(15)',
-      '$target = $null',
-      'while ((Get-Date) -lt $deadline -and $null -eq $target) {',
-      '  Start-Sleep -Milliseconds 250',
-      '  $target = Get-Process |',
-      '    Where-Object { $_.MainWindowHandle -ne 0 -and $_.ProcessName -eq "ApplicationFrameHost" } |',
-      '    Select-Object -First 1',
-      '}',
-      'if ($null -eq $target) { throw "No visible Settings window found" }'
-    ].join('\n')
-  )
+  // Launch ms-settings and capture the newly spawned ApplicationFrameHost PID
+  const script = [
+    '$existingHosts = @(Get-Process -Name ApplicationFrameHost -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)',
+    'Start-Process ms-settings:',
+    '$deadline = (Get-Date).AddSeconds(15)',
+    '$targetId = $null',
+    'while ((Get-Date) -lt $deadline -and $null -eq $targetId) {',
+    '  Start-Sleep -Milliseconds 250',
+    '  $newHost = Get-Process -Name ApplicationFrameHost -ErrorAction SilentlyContinue |',
+    '    Where-Object { $_.MainWindowHandle -ne 0 -and $existingHosts -notcontains $_.Id } |',
+    '    Select-Object -First 1',
+    '  if ($null -ne $newHost) { $targetId = $newHost.Id }',
+    '}',
+    'if ($null -eq $targetId) { throw "No visible Settings window found" }',
+    'Write-Output $targetId'
+  ].join('\n')
+
+  return new Promise<string>((resolve, reject) => {
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      { encoding: 'utf8' },
+      (error, stdout) => {
+        if (error) {
+          reject(error)
+        } else {
+          resolve(stdout.trim())
+        }
+      }
+    )
+  })
 }
 
-async function killSettingsApp(): Promise<void> {
+async function killSettingsApp(targetPid?: string): Promise<void> {
   // Why: teardown is best-effort so cleanup noise cannot mask assertion signal.
   await runPowerShell(
     [
       '$processes = @()',
       '$processes += Get-Process -Name SystemSettings -ErrorAction SilentlyContinue',
-      '$processes += Get-Process -Name ApplicationFrameHost -ErrorAction SilentlyContinue',
+      ...(targetPid ? [`$processes += Get-Process -Id ${targetPid} -ErrorAction SilentlyContinue`] : []),
       'foreach ($process in $processes) {',
       '  try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { }',
       '}',
