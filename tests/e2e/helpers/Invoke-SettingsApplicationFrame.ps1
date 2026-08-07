@@ -127,7 +127,7 @@ public static class SettingsFrameLauncher
 
         int initHr = CoInitializeEx(IntPtr.Zero, COINIT_APARTMENTTHREADED);
         bool uninitialize = initHr >= 0;
-        if (initHr < 0 && initHr != RPC_E_CHANGED_MODE)
+        if (initHr < 0)
             ThrowForHr(initHr, "CoInitializeEx");
 
         IntPtr rawManager = IntPtr.Zero;
@@ -195,7 +195,7 @@ public static class SettingsFrameLauncher
         }
     }
 
-    public static bool CloseFrameHex(
+    public static string CloseFrameHex(
         string frameHwndHex,
         uint expectedFramePid,
         uint expectedAppPid,
@@ -214,13 +214,43 @@ public static class SettingsFrameLauncher
         return CloseFrame(unchecked((long)raw), expectedFramePid, expectedAppPid, timeoutMilliseconds);
     }
 
-    public static bool CloseFrame(
+    public static string CloseFrame(
         long frameHwndValue,
         uint expectedFramePid,
         uint expectedAppPid,
         int timeoutMilliseconds)
     {
         IntPtr hwnd = new IntPtr(frameHwndValue);
+        if (!IsWindow(hwnd))
+            return "AlreadyGone";
+
+        if (!IsExpectedFrame(hwnd, expectedFramePid, expectedAppPid))
+            return "IdentityMismatch";
+
+        if (!PostMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero))
+        {
+            // The target may have closed between identity check and PostMessage.
+            if (!IsExpectedFrame(hwnd, expectedFramePid, expectedAppPid))
+                return "AlreadyGone";
+
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "PostMessage(WM_CLOSE) failed");
+        }
+
+        Stopwatch timer = Stopwatch.StartNew();
+        while (IsExpectedFrame(hwnd, expectedFramePid, expectedAppPid) &&
+               timer.ElapsedMilliseconds < timeoutMilliseconds)
+            Thread.Sleep(50);
+
+        if (IsExpectedFrame(hwnd, expectedFramePid, expectedAppPid))
+            throw new TimeoutException(
+                "The Settings frame did not close in time: HWND=" + frameHwndValue +
+                ", PID=" + expectedFramePid);
+
+        return "Closed";
+    }
+
+    private static bool IsExpectedFrame(IntPtr hwnd, uint expectedFramePid, uint expectedAppPid)
+    {
         if (!IsWindow(hwnd))
             return false;
 
@@ -232,25 +262,6 @@ public static class SettingsFrameLauncher
 
         if (expectedAppPid != 0 && !HasDescendantOwnedBy(hwnd, expectedAppPid))
             return false;
-
-        if (!PostMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero))
-        {
-            // The target may have closed between PID verification and PostMessage.
-            if (!IsWindowOwnedByProcess(hwnd, expectedFramePid))
-                return false;
-
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "PostMessage(WM_CLOSE) failed");
-        }
-
-        Stopwatch timer = Stopwatch.StartNew();
-        while (IsWindowOwnedByProcess(hwnd, expectedFramePid) &&
-               timer.ElapsedMilliseconds < timeoutMilliseconds)
-            Thread.Sleep(50);
-
-        if (IsWindowOwnedByProcess(hwnd, expectedFramePid))
-            throw new TimeoutException(
-                "The Settings frame did not close in time: HWND=" + frameHwndValue +
-                ", PID=" + expectedFramePid);
 
         return true;
     }
@@ -284,7 +295,8 @@ public static class SettingsFrameLauncher
             return true;
         };
 
-        EnumWindows(topCallback, IntPtr.Zero);
+        if (!EnumWindows(topCallback, IntPtr.Zero))
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "EnumWindows failed");
         GC.KeepAlive(topCallback);
         return result;
     }
@@ -410,14 +422,14 @@ switch ($Action) {
             throw '-AppPid is required for -Action Close.'
         }
 
-        $closed = [SettingsFrameLauncher]::CloseFrameHex(
+        $status = [SettingsFrameLauncher]::CloseFrameHex(
             $Hwnd,
             $FramePid,
             $AppPid,
             $TimeoutMilliseconds
         )
         [pscustomobject]@{
-            Closed    = $closed
+            Status    = $status
             FramePid  = $FramePid
             AppPid    = $AppPid
             FrameHwnd = $Hwnd

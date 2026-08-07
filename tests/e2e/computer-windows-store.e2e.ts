@@ -18,12 +18,16 @@ const e2eOptIn = process.env.ORCA_COMPUTER_E2E === '1'
 // do not run in parallel with other UWP e2e, and expect teardown to close
 // any pre-existing Settings window in the same session.
 describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)', () => {
-  test('Store app windows are discoverable and attachable by pid', async () => {
-    await ensureOrcaRuntimeLaunched()
+  test('Store app windows are discoverable and attachable by pid', { timeout: 120_000 }, async () => {
     let targetHwnd: string | undefined
     let targetPid: number | undefined
     let targetAppPid: number | undefined
+    let primaryError: unknown
+    let hasPrimaryError = false
+
     try {
+      await ensureOrcaRuntimeLaunched()
+
       const frame = await launchSettingsApp()
       targetPid = frame.FramePid
       targetAppPid = frame.AppPid
@@ -37,7 +41,7 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
           expect.objectContaining({ bundleId: 'ApplicationFrameHost', pid: targetPid })
         ])
       )
-      let state = parseJsonOutput<{ result: ComputerSnapshotResult }>(
+      const state = parseJsonOutput<{ result: ComputerSnapshotResult }>(
         (
           await runOrcaCli([
             'computer',
@@ -54,14 +58,36 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
       // Ensure the snapshot returned belongs to our targeted app
       expect(state.result.snapshot.app.pid).toBe(targetPid)
       expect(state.result.snapshot.treeText.length).toBeGreaterThan(0)
-    } finally {
-      if (targetHwnd && targetPid !== undefined && targetAppPid !== undefined) {
+    } catch (error) {
+      hasPrimaryError = true
+      primaryError = error
+    }
+
+    const cleanupErrors: unknown[] = []
+
+    if (targetHwnd && targetPid !== undefined && targetAppPid !== undefined) {
+      try {
         await closeSettingsFrame(targetHwnd, targetPid, targetAppPid)
-      } else {
-        // Fallback cleanup skipped: terminating by name breaks CI isolation and user environments.
-        console.warn('Launch timed out or failed, skipping teardown to avoid killing unrelated UWP apps.')
+      } catch (error) {
+        cleanupErrors.push(error)
       }
+    }
+
+    try {
       await stopOrcaRuntime()
+    } catch (error) {
+      cleanupErrors.push(error)
+    }
+
+    if (hasPrimaryError) {
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError([primaryError, ...cleanupErrors], 'The E2E test and its cleanup both failed')
+      }
+      throw primaryError
+    }
+
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(cleanupErrors, 'E2E cleanup failed')
     }
   })
 })
@@ -121,8 +147,8 @@ async function closeSettingsFrame(hwnd: string, framePid: number, appPid: number
       10000
     )
     const result = JSON.parse(stdout.trim()) as Record<string, unknown>
-    if (result.Closed !== true) {
-      throw new Error(`Settings frame ${hwnd} identity mismatch or close failed. Cleanup aborted to preserve isolation.`)
+    if (result.Status !== 'Closed' && result.Status !== 'AlreadyGone') {
+      throw new Error(`Settings frame ${hwnd} teardown returned status "${result.Status}" (identity mismatch or failure).`)
     }
   } catch (error) {
     throw new Error(`Failed to close Settings frame ${hwnd}: ${error instanceof Error ? error.message : String(error)}`)
