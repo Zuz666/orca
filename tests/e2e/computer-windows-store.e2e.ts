@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import type { ComputerListAppsResult, ComputerSnapshotResult } from '../../src/shared/runtime-types'
 import { execFile } from 'node:child_process'
+import { join } from 'node:path'
+import { promisify } from 'node:util'
 import {
   ensureOrcaRuntimeLaunched,
   findRoleIndex,
@@ -16,7 +18,10 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
   test('Store app windows are discoverable by title and clickable', async () => {
     await ensureOrcaRuntimeLaunched()
     let targetPid: string | undefined
-    targetPid = await launchSettingsApp()
+    let targetHwnd: string | undefined
+    const frame = await launchSettingsApp()
+    targetPid = String(frame.FramePid)
+    targetHwnd = frame.FrameHwnd
     try {
       const apps = parseJsonOutput<{ result: ComputerListAppsResult }>(
         (await runOrcaCli(['computer', 'list-apps', '--json'])).stdout
@@ -58,69 +63,64 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
       )
       expect(state.result.snapshot.treeText.length).toBeGreaterThan(0)
     } finally {
-      await killSettingsApp(targetPid)
+      if (targetHwnd) {
+        await killSettingsApp(targetHwnd)
+      }
       await stopOrcaRuntime()
     }
   })
 })
-async function launchSettingsApp(): Promise<string> {
+const execFileAsync = promisify(execFile)
 
-  // Launch ms-settings and capture the newly spawned ApplicationFrameHost PID
-  const script = [
-    '$existingHosts = @(Get-Process -Name ApplicationFrameHost -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)',
-    'Start-Process ms-settings:',
-    '$deadline = (Get-Date).AddSeconds(15)',
-    '$targetId = $null',
-    'while ((Get-Date) -lt $deadline -and $null -eq $targetId) {',
-    '  Start-Sleep -Milliseconds 250',
-    '  $newHost = Get-Process -Name ApplicationFrameHost -ErrorAction SilentlyContinue |',
-    '    Where-Object { $_.MainWindowHandle -ne 0 -and $existingHosts -notcontains $_.Id } |',
-    '    Select-Object -First 1',
-    '  if ($null -ne $newHost) { $targetId = $newHost.Id }',
-    '}',
-    'if ($null -eq $targetId) { throw "No visible Settings window found" }',
-    'Write-Output $targetId'
-  ].join('\n')
-
-  return new Promise<string>((resolve, reject) => {
-    execFile(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-Command', script],
-      { encoding: 'utf8', timeout: 20000 },
-      (error, stdout) => {
-        if (error) {
-          reject(error)
-        } else {
-          resolve(stdout.trim())
-        }
-      }
-    )
-  })
-}
-
-async function killSettingsApp(targetPid?: string): Promise<void> {
-  // Why: teardown is best-effort so cleanup noise cannot mask assertion signal.
-  await runPowerShell(
+async function launchSettingsApp(): Promise<{ FramePid: number; FrameHwnd: string }> {
+  const scriptPath = join(__dirname, 'helpers', 'Invoke-SettingsApplicationFrame.ps1')
+  const { stdout } = await execFileAsync(
+    'powershell.exe',
     [
-      '$processes = @()',
-      ...(targetPid ? [`$processes += Get-Process -Id ${targetPid} -ErrorAction SilentlyContinue`] : []),
-      'foreach ($process in $processes) {',
-      '  try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { }',
-      '}',
-      'exit 0'
-    ].join('\n')
-  ).catch(() => undefined)
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      scriptPath,
+      '-Action',
+      'Launch',
+      '-TimeoutMilliseconds',
+      '15000'
+    ],
+    {
+      windowsHide: true,
+      encoding: 'utf8',
+      timeout: 20000
+    }
+  )
+  return JSON.parse(stdout.trim())
 }
 
-async function runPowerShell(script: string): Promise<void> {
-  const { execFile } = await import('node:child_process')
-  await new Promise<void>((resolve, reject) => {
-    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: 20000 }, (error) => {
-      if (error) {
-        reject(error)
-        return
-      }
-      resolve()
-    })
-  })
+async function killSettingsApp(hwnd: string): Promise<void> {
+  const scriptPath = join(__dirname, 'helpers', 'Invoke-SettingsApplicationFrame.ps1')
+  await execFileAsync(
+    'powershell.exe',
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      scriptPath,
+      '-Action',
+      'Close',
+      '-Hwnd',
+      hwnd,
+      '-TimeoutMilliseconds',
+      '5000'
+    ],
+    {
+      windowsHide: true,
+      encoding: 'utf8',
+      timeout: 10000
+    }
+  ).catch(() => undefined)
 }
