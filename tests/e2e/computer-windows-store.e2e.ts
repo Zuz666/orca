@@ -52,11 +52,8 @@ describe.skipIf(!isWindows || !e2eOptIn)('computer-use Windows e2e (Store apps)'
       if (targetHwnd && targetPid !== undefined) {
         await killSettingsApp(targetHwnd, targetPid)
       } else {
-        // Fallback cleanup if launch timed out and leaked a frame
-        await execFileAsync('powershell.exe', [
-          '-Command',
-          'Stop-Process -Name ApplicationFrameHost -ErrorAction SilentlyContinue'
-        ]).catch(() => undefined)
+        // Fallback cleanup skipped: terminating by name breaks CI isolation and user environments.
+        console.warn('Launch timed out or failed, skipping teardown to avoid killing unrelated UWP apps.')
       }
       await stopOrcaRuntime()
     }
