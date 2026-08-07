@@ -49,6 +49,7 @@ public static class SettingsFrameLauncher
     private const uint AO_NOERRORUI = 0x2;
     private const uint WM_CLOSE = 0x0010;
     private const int RPC_E_CHANGED_MODE = unchecked((int)0x80010106);
+    private const uint COINIT_APARTMENTTHREADED = 0x2;
 
     private static readonly Guid ActivationManagerClsid =
         new Guid("45BA127D-10A8-46EA-8AB7-56EA9078943C");
@@ -124,7 +125,7 @@ public static class SettingsFrameLauncher
         if (timeoutMilliseconds <= 0)
             throw new ArgumentOutOfRangeException("timeoutMilliseconds");
 
-        int initHr = CoInitializeEx(IntPtr.Zero, 0); // COINIT_MULTITHREADED
+        int initHr = CoInitializeEx(IntPtr.Zero, COINIT_APARTMENTTHREADED);
         bool uninitialize = initHr >= 0;
         if (initHr < 0 && initHr != RPC_E_CHANGED_MODE)
             ThrowForHr(initHr, "CoInitializeEx");
