@@ -61,14 +61,15 @@ describe('computer-use e2e workflow', () => {
     expect(workflow.on.pull_request.paths).toEqual(
       expect.arrayContaining([
         'tests/e2e/computer-windows-store.e2e.ts',
-        'tests/e2e/helpers/Invoke-SettingsApplicationFrame.ps1'
+        'tests/e2e/helpers/Invoke-SettingsApplicationFrame.ps1',
+        'tests/e2e/helpers/windows-settings-frame.ts',
+        'tests/e2e/helpers/windows-settings-frame.unit.test.ts'
       ])
     )
 
     const windowsRuns = workflow.jobs.windows.steps
       .map((step) => step.run)
       .filter((run) => typeof run === 'string')
-
     expect(windowsRuns).toContain(
       'pnpm test:e2e:computer --reporter=verbose tests/e2e/computer-windows.e2e.ts tests/e2e/computer-windows-store.e2e.ts'
     )
