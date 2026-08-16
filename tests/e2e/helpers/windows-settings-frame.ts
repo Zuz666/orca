@@ -87,3 +87,52 @@ export function buildCloseSettingsArgs(frame: SettingsFrame): string[] {
     '5000'
   ]
 }
+
+// Secondary-action metadata is Orca-generated (English on any OS locale), so
+// targeting survives localized roles/names; raw ControlType.* lines are window chrome.
+export function findSettingsSearchBoxCandidates(treeText: string): string[] {
+  return treeText
+    .split('\n')
+    .filter((line) => !/ControlType\./.test(line) && line.endsWith('Secondary Actions: SetValue'))
+}
+
+// Returns the search box line iff exactly one candidate exists; null otherwise,
+// so callers can choose strict failure or transient retry.
+export function selectSettingsSearchBoxLine(treeText: string): string | null {
+  const candidates = findSettingsSearchBoxCandidates(treeText)
+  return candidates.length === 1 ? (candidates.at(0) ?? null) : null
+}
+
+// Locale-free targeting: fail loudly when the Settings home layout drifts.
+export function requireUniqueSettingsSearchBoxIndex(treeText: string): number {
+  const line = selectSettingsSearchBoxLine(treeText)
+  if (line === null) {
+    const candidates = findSettingsSearchBoxCandidates(treeText)
+    throw new Error(
+      `Expected exactly one Settings search box candidate (Secondary Actions: SetValue, non-chrome), got ${candidates.length}:\n${candidates.join('\n')}`
+    )
+  }
+  return parseElementLineIndex(line)
+}
+
+// The result echo must come from a different indexed element, never a header/summary line.
+export function findSettingsSearchEchoLines(
+  treeText: string,
+  probe: string,
+  fieldIndex: number
+): string[] {
+  return treeText
+    .split('\n')
+    .filter(
+      (line) =>
+        /^\s*\d+\s/.test(line) && line.includes(probe) && parseElementLineIndex(line) !== fieldIndex
+    )
+}
+
+export function parseElementLineIndex(line: string): number {
+  const index = Number.parseInt(line.match(/^\s*(\d+)/)?.[1] ?? '', 10)
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error(`Not an indexed element line: ${JSON.stringify(line)}`)
+  }
+  return index
+}

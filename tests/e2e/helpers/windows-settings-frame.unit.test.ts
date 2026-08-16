@@ -2,8 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCloseSettingsArgs,
   buildGetSettingsStateArgs,
+  findSettingsSearchBoxCandidates,
+  findSettingsSearchEchoLines,
+  parseElementLineIndex,
   parseSettingsCloseOutput,
-  parseSettingsLaunchOutput
+  parseSettingsLaunchOutput,
+  requireUniqueSettingsSearchBoxIndex,
+  selectSettingsSearchBoxLine
 } from './windows-settings-frame'
 
 describe('windows-settings-frame helpers', () => {
@@ -153,5 +158,122 @@ describe('windows-settings-frame helpers', () => {
         /Failed to parse SettingsFrameLauncher close output as JSON/
       )
     })
+  })
+})
+
+describe('findSettingsSearchBoxCandidates', () => {
+  const enLine = '\t\t9 edit Find a setting, search settings, Secondary Actions: SetValue'
+  const ruLine =
+    '\t\t9 правка Поле поиска, поиск настроек, Value: zzqq7391, Secondary Actions: SetValue'
+
+  it('finds the single search box by invariant metadata regardless of locale', () => {
+    const tree = [
+      'App=ApplicationFrameHost (pid 6300)',
+      '\t1 ControlType.Window Параметры, Secondary Actions: SetValue',
+      enLine,
+      '\t\t\t78 кнопка Резервная копия, Secondary Actions: SetValue, Select',
+      '\t\t\t88 переключатель Bluetooth, Secondary Actions: Toggle'
+    ].join('\n')
+
+    expect(findSettingsSearchBoxCandidates(tree)).toEqual([enLine])
+  })
+
+  it('keeps matching after typing when a localized role renders Value as a labeled segment', () => {
+    expect(findSettingsSearchBoxCandidates(ruLine)).toEqual([ruLine])
+  })
+
+  it('keeps matching after typing when the English role renders the value bare', () => {
+    const bare = '\t\t9 edit Find a setting zzqq7391, Secondary Actions: SetValue'
+    expect(findSettingsSearchBoxCandidates(bare)).toEqual([bare])
+  })
+
+  it('returns every match so callers can fail loudly on ambiguity', () => {
+    const tree = [enLine, ruLine.replace(/^\t\t9/, '\t\t10')].join('\n')
+    expect(findSettingsSearchBoxCandidates(tree)).toHaveLength(2)
+  })
+
+  it('returns nothing when no element advertises SetValue as its only action', () => {
+    expect(
+      findSettingsSearchBoxCandidates('0 window Параметры\n\t1 текст Нет результатов')
+    ).toEqual([])
+  })
+})
+
+describe('parseElementLineIndex', () => {
+  it('extracts the index from an indented localized element line', () => {
+    expect(parseElementLineIndex('\t\t9 правка Поле поиска, поиск настроек')).toBe(9)
+  })
+
+  it('rejects non-element header lines', () => {
+    expect(() => parseElementLineIndex('App=ApplicationFrameHost (pid 6300)')).toThrow(
+      /Not an indexed element line/
+    )
+  })
+})
+
+describe('findSettingsSearchEchoLines', () => {
+  it('returns only other indexed element lines containing the probe', () => {
+    const tree = [
+      '\t\t9 правка Поле поиска, поиск настроек, Value: zzqq7391, Secondary Actions: SetValue',
+      '\t\t\t11 текст Нет результатов для zzqq7391'
+    ].join('\n')
+
+    expect(findSettingsSearchEchoLines(tree, 'zzqq7391', 9)).toEqual([
+      '\t\t\t11 текст Нет результатов для zzqq7391'
+    ])
+  })
+
+  it('ignores unindexed lines that contain the probe', () => {
+    const tree = [
+      'App=ApplicationFrameHost (pid 6300)',
+      'Window: "zzqq7391", App: Параметры.',
+      '\t\t9 правка Поле поиска, поиск настроек, Value: zzqq7391, Secondary Actions: SetValue'
+    ].join('\n')
+
+    expect(findSettingsSearchEchoLines(tree, 'zzqq7391', 9)).toEqual([])
+  })
+
+  it('excludes the field element even when its line text differs between snapshots', () => {
+    const tree = '\t\t9 edit Find a setting zzqq7391, Secondary Actions: SetValue'
+
+    expect(findSettingsSearchEchoLines(tree, 'zzqq7391', 9)).toEqual([])
+  })
+})
+
+describe('selectSettingsSearchBoxLine', () => {
+  const enLine = '\t\t9 edit Find a setting, search settings, Secondary Actions: SetValue'
+
+  it('returns the line when exactly one candidate exists', () => {
+    expect(selectSettingsSearchBoxLine(`0 window Settings\n${enLine}`)).toBe(enLine)
+  })
+
+  it('returns null when no candidate exists', () => {
+    expect(selectSettingsSearchBoxLine('0 window Settings\n\t1 text Home')).toBeNull()
+  })
+
+  it('returns null when multiple candidates exist', () => {
+    const tree = [enLine, '\t\t10 edit Other, Secondary Actions: SetValue'].join('\n')
+    expect(selectSettingsSearchBoxLine(tree)).toBeNull()
+  })
+})
+
+describe('requireUniqueSettingsSearchBoxIndex', () => {
+  it('returns the element index for a single candidate', () => {
+    expect(
+      requireUniqueSettingsSearchBoxIndex('\t\t9 edit Find a setting, Secondary Actions: SetValue')
+    ).toBe(9)
+  })
+
+  it('fails loudly listing candidates when none exist', () => {
+    expect(() => requireUniqueSettingsSearchBoxIndex('0 window Settings')).toThrow(/got 0:/)
+  })
+
+  it('fails loudly listing candidates when several exist', () => {
+    const tree = [
+      '\t\t9 edit Find a setting, Secondary Actions: SetValue',
+      '\t\t10 edit Other, Secondary Actions: SetValue'
+    ].join('\n')
+    expect(() => requireUniqueSettingsSearchBoxIndex(tree)).toThrow(/got 2:/)
+    expect(() => requireUniqueSettingsSearchBoxIndex(tree)).toThrow(/Find a setting/)
   })
 })
