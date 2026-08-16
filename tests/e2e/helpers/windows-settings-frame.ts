@@ -31,7 +31,8 @@ export function parseSettingsLaunchOutput(stdout: string): SettingsFrame {
     !Number.isSafeInteger((parsed as Record<string, unknown>).AppPid) ||
     ((parsed as Record<string, unknown>).AppPid as number) <= 0 ||
     typeof (parsed as Record<string, unknown>).FrameHwnd !== 'string' ||
-    !/^0x[0-9a-f]+$/i.test((parsed as Record<string, unknown>).FrameHwnd as string)
+    !/^0x[0-9a-f]+$/i.test((parsed as Record<string, unknown>).FrameHwnd as string) ||
+    BigInt((parsed as Record<string, unknown>).FrameHwnd as string) === BigInt(0)
   ) {
     throw new Error(`Invalid SettingsFrameLauncher payload shape: ${stdout}`)
   }

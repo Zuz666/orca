@@ -24,7 +24,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
 
 public sealed class SettingsFrameInfo
@@ -36,8 +35,6 @@ public sealed class SettingsFrameInfo
     {
         get { return "0x" + unchecked((ulong)FrameHwndValue).ToString("X"); }
     }
-    public string FrameClass { get; internal set; }
-    public string FrameTitle { get; internal set; }
 }
 
 public static class SettingsFrameLauncher
@@ -106,14 +103,6 @@ public static class SettingsFrameLauncher
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowVisible(IntPtr hwnd);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetClassName(IntPtr hwnd, StringBuilder text, int maxCount);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int maxCount);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetWindowTextLength(IntPtr hwnd);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -288,8 +277,6 @@ public static class SettingsFrameLauncher
             info.AppPid = appPid;
             info.FramePid = framePid;
             info.FrameHwndValue = top.ToInt64();
-            info.FrameClass = ReadClassName(top);
-            info.FrameTitle = ReadWindowText(top);
             result.Add(info);
             return true;
         };
@@ -361,20 +348,6 @@ public static class SettingsFrameLauncher
         }
     }
 
-    private static string ReadClassName(IntPtr hwnd)
-    {
-        StringBuilder text = new StringBuilder(256);
-        return GetClassName(hwnd, text, text.Capacity) > 0 ? text.ToString() : string.Empty;
-    }
-
-    private static string ReadWindowText(IntPtr hwnd)
-    {
-        int length = GetWindowTextLength(hwnd);
-        StringBuilder text = new StringBuilder(Math.Max(length + 1, 2));
-        GetWindowText(hwnd, text, text.Capacity);
-        return text.ToString();
-    }
-
     private static void ThrowForHr(int hr, string operation)
     {
         if (hr >= 0)
@@ -396,8 +369,6 @@ switch ($Action) {
             AppPid      = $frame.AppPid
             FramePid    = $frame.FramePid
             FrameHwnd   = $frame.FrameHwndHex
-            FrameClass  = $frame.FrameClass
-            FrameTitle  = $frame.FrameTitle
         } | ConvertTo-Json -Compress
     }
 

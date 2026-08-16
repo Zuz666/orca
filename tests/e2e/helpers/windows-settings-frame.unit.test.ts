@@ -102,6 +102,15 @@ describe('windows-settings-frame helpers', () => {
         parseSettingsLaunchOutput('{"AppPid":1,"FramePid":2,"FrameHwnd":"1234"}')
       ).toThrow(/Invalid SettingsFrameLauncher payload shape/)
     })
+
+    it('throws on a zero HWND', () => {
+      expect(() =>
+        parseSettingsLaunchOutput('{"AppPid":1,"FramePid":2,"FrameHwnd":"0x0"}')
+      ).toThrow(/Invalid SettingsFrameLauncher payload shape/)
+      expect(() =>
+        parseSettingsLaunchOutput('{"AppPid":1,"FramePid":2,"FrameHwnd":"0x0000"}')
+      ).toThrow(/Invalid SettingsFrameLauncher payload shape/)
+    })
   })
 
   describe('parseSettingsCloseOutput', () => {
