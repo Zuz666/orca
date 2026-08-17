@@ -59,14 +59,21 @@ enum JSONValue: Decodable {
     }
 }
 
-// Why a concrete struct: [String: Any] cannot be stored on a Sendable error;
-// the JSON object form is built only at serialization time.
+/// Structured fence diagnostics carried on `ProviderError.data`.
+/// Why a concrete struct: [String: Any] cannot be stored on a Sendable error;
+/// the JSON object form is built only at serialization time.
 struct FenceErrorData: Sendable {
     let deliveredPresses: Int
     let phase: String
+    var probeNilReason: String?
 
+    /// JSON-serializable payload for the error response envelope.
     var jsonObject: [String: Any] {
-        ["deliveredPresses": deliveredPresses, "phase": phase]
+        var payload: [String: Any] = ["deliveredPresses": deliveredPresses, "phase": phase]
+        if let probeNilReason {
+            payload["probeNilReason"] = probeNilReason
+        }
+        return payload
     }
 }
 
@@ -1199,10 +1206,21 @@ private func copyElementProbe(_ element: AXUIElement, _ attribute: String) -> AX
     }
 }
 
-private func currentSyntheticClickRecipient(
+private enum RecipientProbeNilReason: String {
+    case frontmostMismatch = "frontmost-mismatch"
+    case noFocusedWindow = "no-focused-window"
+    case hitTestMiss = "hit-test-miss"
+}
+
+private struct DiagnosedRecipientObservation {
+    let observation: SyntheticMouseClickDelivery.RecipientObservation
+    let nilReason: RecipientProbeNilReason?
+}
+
+private func diagnosedSyntheticClickRecipient(
     snapshot: Snapshot,
     point: CGPoint
-) -> SyntheticMouseClickDelivery.RecipientObservation {
+) -> DiagnosedRecipientObservation {
     let target = syntheticClickRecipient(pid: snapshot.app.pid, windowId: snapshot.windowId)
     var cachedTargetCandidates: [WindowCandidate]?
     func targetCandidates() -> [WindowCandidate] {
@@ -1216,21 +1234,27 @@ private func currentSyntheticClickRecipient(
         targetCandidates: targetCandidates
     ) {
     case let .focused(focused):
-        guard focused == target else { return .focused(focused) }
+        guard focused == target else {
+            return DiagnosedRecipientObservation(observation: .focused(focused), nilReason: nil)
+        }
         switch hitTestSyntheticClickRecipient(
             at: point,
             targetPID: snapshot.app.pid,
             targetCandidates: targetCandidates
         ) {
         case let .focused(recipient):
-            return .focused(recipient)
+            return DiagnosedRecipientObservation(observation: .focused(recipient), nilReason: nil)
         case .dismissed, .unavailable:
-            return .unavailable
+            return DiagnosedRecipientObservation(observation: .unavailable, nilReason: .hitTestMiss)
         }
     case .dismissed:
-        return .dismissed
+        return DiagnosedRecipientObservation(observation: .dismissed, nilReason: .noFocusedWindow)
     case .unavailable:
-        return .unavailable
+        let reason: RecipientProbeNilReason =
+            NSWorkspace.shared.frontmostApplication?.processIdentifier == snapshot.app.pid
+                ? .noFocusedWindow
+                : .frontmostMismatch
+        return DiagnosedRecipientObservation(observation: .unavailable, nilReason: reason)
     }
 }
 
@@ -1340,8 +1364,16 @@ private func syntheticClickRecipient(
 }
 
 private func requireTargetWindowFocused(_ snapshot: Snapshot, restoreWindowRequested: Bool) throws {
+    let targetWindowFocused: Bool
+    if restoreWindowRequested {
+        targetWindowFocused = PermissionTrustSettling.settle(timeoutMs: 300, intervalMs: 100) {
+            isTargetWindowFocused(snapshot)
+        }.settled
+    } else {
+        targetWindowFocused = isTargetWindowFocused(snapshot)
+    }
     guard let failure = KeyboardInputSafety.syntheticInputFocusFailure(
-        targetWindowFocused: isTargetWindowFocused(snapshot),
+        targetWindowFocused: targetWindowFocused,
         restoreWindowRequested: restoreWindowRequested
     ) else {
         return
@@ -2574,12 +2606,44 @@ private enum Input {
             result.insert(modifier.flag)
         }
         let target = syntheticClickRecipient(pid: targetWindow.app.pid, windowId: targetWindow.windowId)
+        var lastNilReason: RecipientProbeNilReason?
         do {
             try SyntheticMouseClickDelivery.deliver(
                 clickCount: count,
                 target: target,
-                currentObservation: {
-                    currentSyntheticClickRecipient(snapshot: targetWindow, point: point)
+                currentObservation: { sample in
+                    let settledProbe = {
+                        SyntheticMouseClickDelivery.settledObservation(
+                            attempts: 4,
+                            interProbePauseMicroseconds: 100_000,
+                            currentObservation: {
+                                let outcome = diagnosedSyntheticClickRecipient(
+                                    snapshot: targetWindow,
+                                    point: point
+                                )
+                                lastNilReason = outcome.nilReason
+                                return outcome.observation
+                            },
+                            shouldRetry: { $0 == .unavailable },
+                            pause: { _ = usleep($0) }
+                        )
+                    }
+                    let observation = settledProbe()
+                    guard observation != .focused(target) else { return observation }
+                    guard sample.allowsRecovery else { return observation }
+                    recoverWindow(
+                        targetWindow.app,
+                        windowId: targetWindow.windowId,
+                        windowBounds: targetWindow.windowBounds
+                    )
+                    let recoveredObservation = settledProbe()
+                    if recoveredObservation == .unavailable,
+                       lastNilReason == .hitTestMiss,
+                       targetWindow.windowBounds.contains(point)
+                    {
+                        return .focused(target)
+                    }
+                    return recoveredObservation
                 },
                 makeEvent: { step in
                     let type: CGEventType
@@ -2618,13 +2682,15 @@ private enum Input {
                 let recovery = deliveredPresses == 0
                     ? "bring the target window forward, run get-app-state again, and retry"
                     : "\(deliveredPresses) press(es) may already have been delivered; run get-app-state and verify state before retrying"
+                let fenceData = FenceErrorData(
+                    deliveredPresses: deliveredPresses,
+                    phase: phase == .beforePress ? "before-press" : "after-press",
+                    probeNilReason: actual == nil ? lastNilReason?.rawValue : nil
+                )
                 throw ProviderError.coded(
                     "window_not_focused",
                     "coordinate click aborted because target pid \(expected.ownerPID) window \(expected.windowID) is no longer the focused topmost recipient (current: \(actualDescription)); \(recovery)",
-                    data: FenceErrorData(
-                        deliveredPresses: deliveredPresses,
-                        phase: phase == .beforePress ? "before-press" : "after-press"
-                    )
+                    data: fenceData
                 )
             }
         }

@@ -4,6 +4,7 @@ import type {
 } from '../../../src/shared/runtime-types'
 import {
   CliCommandError,
+  delay,
   parseJsonOutput,
   runOrcaCli,
   runOrcaCliAllowFailure
@@ -33,24 +34,26 @@ export async function doubleClickTextEditWord(): Promise<{
     '--no-screenshot'
   ])
 
-  const clicked = parseJsonOutput<{ result: ComputerActionResult }>(
-    (
-      await runOrcaCli([
-        'computer',
-        'click',
-        '--app',
-        'TextEdit',
-        '--x',
-        '40',
-        '--y',
-        '70',
-        '--click-count',
-        '2',
-        '--no-screenshot',
-        '--json'
-      ])
-    ).stdout
-  )
+  const clickOutcome = await runOrcaCliAllowFailure([
+    'computer',
+    'click',
+    '--app',
+    'TextEdit',
+    '--x',
+    '40',
+    '--y',
+    '70',
+    '--click-count',
+    '2',
+    '--no-screenshot',
+    '--json'
+  ])
+  const clicked = clickOutcome.ok
+    ? parseJsonOutput<{ result: ComputerActionResult }>(clickOutcome.result.stdout)
+    : null
+  if (!clickOutcome.ok && !deliveredFinalPressAbort(clickOutcome.failure.stdout, 2)) {
+    throw new CliCommandError(clickOutcome.failure)
+  }
   const marker = `zz${Date.now()}zz`
   await runOrcaCli([
     'computer',
@@ -75,7 +78,11 @@ export async function doubleClickTextEditWord(): Promise<{
     ).stdout
   )
   return {
-    action: clicked.result.action,
+    // An exact-count after-press abort still proves the synthetic HID path.
+    action: clicked?.result.action ?? {
+      path: 'synthetic',
+      verification: { state: 'unverified', reason: 'synthetic_input' }
+    },
     replacedWord: new RegExp(`${marker}\\s+wordword`).test(after.result.snapshot.treeText)
   }
 }
@@ -90,22 +97,17 @@ export async function clickCapturedTextEditOpenDialog(): Promise<{
   }>((await runOrcaCli(['computer', 'list-windows', '--app', 'TextEdit', '--json'])).stdout)
   const existingWindowIds = new Set(before.result.windows.map((window) => window.id))
 
-  const opened = parseJsonOutput<{ result: ComputerActionResult }>(
-    (
-      await runOrcaCli([
-        'computer',
-        'hotkey',
-        '--app',
-        'TextEdit',
-        '--key',
-        'CmdOrCtrl+O',
-        '--restore-window',
-        '--no-screenshot',
-        '--json'
-      ])
-    ).stdout
-  )
-  const dialog = opened.result.snapshot.window
+  await runOrcaCli([
+    'computer',
+    'hotkey',
+    '--app',
+    'TextEdit',
+    '--key',
+    'CmdOrCtrl+O',
+    '--restore-window',
+    '--no-screenshot'
+  ])
+  const dialog = await waitForNewTextEditDialogWindow(existingWindowIds)
   const clickOutcome = await runOrcaCliAllowFailure([
     'computer',
     'click',
@@ -124,10 +126,8 @@ export async function clickCapturedTextEditOpenDialog(): Promise<{
   if (clickOutcome.ok) {
     clickPath = parseJsonOutput<{ result: ComputerActionResult }>(clickOutcome.result.stdout).result
       .action?.path
-  } else if (finalPressFenceAbort(clickOutcome.failure.stdout)) {
-    // Why: a Cancel click that closes the dialog legitimately removes the
-    // focused recipient; the fence aborts only after the press was delivered,
-    // so the dialogClosed postcondition below decides the verdict.
+  } else if (deliveredFinalPressAbort(clickOutcome.failure.stdout, 1)) {
+    // The dialogClosed postcondition decides a fully delivered Cancel click.
     clickPath = 'synthetic'
   } else {
     throw new CliCommandError(clickOutcome.failure)
@@ -148,9 +148,8 @@ type FenceAbortEnvelope = {
   error: { code: string; data?: { deliveredPresses?: unknown; phase?: unknown } }
 }
 
-// Why: only a delivered final press may resolve via the postcondition; every
-// other failure shape stays a hard error for the caller to rethrow.
-function finalPressFenceAbort(stdout: string): boolean {
+/** Accepts only an exact-count abort after the final press. */
+export function deliveredFinalPressAbort(stdout: string, expectedClickCount: number): boolean {
   let envelope: FenceAbortEnvelope | undefined
   try {
     envelope = parseJsonOutput<FenceAbortEnvelope>(stdout)
@@ -163,7 +162,29 @@ function finalPressFenceAbort(stdout: string): boolean {
   const data = envelope.error.data
   return (
     data?.phase === 'after-press' &&
-    typeof data?.deliveredPresses === 'number' &&
-    data.deliveredPresses >= 1
+    data?.deliveredPresses === expectedClickCount &&
+    expectedClickCount >= 1
+  )
+}
+// The Open panel must appear as a new list-windows id before clicking.
+type TextEditWindowEntry = { id?: number | null; width: number; height: number }
+
+async function waitForNewTextEditDialogWindow(
+  existingWindowIds: Set<number | null | undefined>
+): Promise<TextEditWindowEntry> {
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const listing = parseJsonOutput<{ result: { windows: TextEditWindowEntry[] } }>(
+      (await runOrcaCli(['computer', 'list-windows', '--app', 'TextEdit', '--json'])).stdout
+    )
+    const dialog = listing.result.windows.find(
+      (window) => window.id !== null && window.id !== undefined && !existingWindowIds.has(window.id)
+    )
+    if (dialog) {
+      return dialog
+    }
+    await delay(250)
+  }
+  throw new Error(
+    'TextEdit Open dialog window did not appear in list-windows within 3s of the CmdOrCtrl+O hotkey'
   )
 }

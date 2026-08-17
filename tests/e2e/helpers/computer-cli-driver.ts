@@ -26,11 +26,7 @@ export type CliFailure = {
 
 export type CliOutcome = { ok: true; result: CliResult } | { ok: false; failure: CliFailure }
 
-/**
- * Why: execFile's error carries structured fields the flattened Error destroyed;
- * callers must read exit output (e.g. the JSON failure envelope) without
- * scraping the concatenated message string.
- */
+/** Preserves stdout, stderr, and exit code from failed CLI commands. */
 export class CliCommandError extends Error {
   readonly exitCode: number | undefined
   readonly stdout: string
@@ -45,9 +41,7 @@ export class CliCommandError extends Error {
   }
 }
 
-/** Runs the CLI and returns a typed failure outcome instead of throwing, so
- * drivers can inspect the JSON failure envelope (fence phase, deliveredPresses)
- * and resolve fully-delivered presses via their own postconditions. */
+/** Returns CLI failures for structured envelope inspection. */
 export async function runOrcaCliAllowFailure(
   args: string[],
   options: RunOrcaCliOptions = {}
@@ -194,7 +188,7 @@ async function waitForOrcaRuntimeReady(): Promise<void> {
   throw new Error(`Orca runtime metadata was not ready at ${metadataPath}.${detail}`)
 }
 
-function delay(ms: number): Promise<void> {
+export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 

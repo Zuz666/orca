@@ -120,7 +120,11 @@ describe('computer sidecar client', () => {
     const rejection = expect(call).rejects.toMatchObject({
       name: 'RuntimeClientError',
       code: 'window_not_focused',
-      data: { deliveredPresses: 1, phase: 'after-press' }
+      data: {
+        deliveredPresses: 1,
+        phase: 'after-press',
+        probeNilReason: 'hit-test-miss'
+      }
     })
     child.emit('message', {
       id: request.id,
@@ -128,7 +132,11 @@ describe('computer sidecar client', () => {
       error: {
         code: 'window_not_focused',
         message: 'coordinate click aborted',
-        data: { deliveredPresses: 1, phase: 'after-press' }
+        data: {
+          deliveredPresses: 1,
+          phase: 'after-press',
+          probeNilReason: 'hit-test-miss'
+        }
       }
     })
 

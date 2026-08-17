@@ -208,17 +208,14 @@ export function mapRuntimeError(id: string, meta: RpcEnvelopeMeta, error: unknow
 
 export const computerErrorData = computerUseErrorRecoveryData
 
-/**
- * Why: native helpers attach structured diagnostics (e.g. fence phase) that
- * the static recovery map cannot know; recovery nextSteps stay authoritative.
- */
+/** Merges optional helper diagnostics without replacing recovery guidance. */
 export function computerErrorDataWithHelperDetails(
   code: string,
   message: string | undefined,
   helperData: unknown
 ): Record<string, unknown> | undefined {
   const recovery = computerErrorData(code, message)
-  if (helperData && typeof helperData === 'object') {
+  if (helperData && typeof helperData === 'object' && !Array.isArray(helperData)) {
     return { ...helperData, ...recovery }
   }
   return recovery

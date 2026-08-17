@@ -172,7 +172,11 @@ describe('MacOSNativeProviderClient', () => {
     const rejection = expect(call).rejects.toMatchObject({
       name: 'RuntimeClientError',
       code: 'window_not_focused',
-      data: { deliveredPresses: 1, phase: 'after-press' }
+      data: {
+        deliveredPresses: 1,
+        phase: 'after-press',
+        probeNilReason: 'hit-test-miss'
+      }
     })
     socket.emit(
       'data',
@@ -182,7 +186,11 @@ describe('MacOSNativeProviderClient', () => {
         error: {
           code: 'window_not_focused',
           message: 'coordinate click aborted',
-          data: { deliveredPresses: 1, phase: 'after-press' }
+          data: {
+            deliveredPresses: 1,
+            phase: 'after-press',
+            probeNilReason: 'hit-test-miss'
+          }
         }
       })}\n`
     )

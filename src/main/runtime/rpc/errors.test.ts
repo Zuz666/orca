@@ -198,7 +198,14 @@ describe('mapRuntimeError', () => {
     const error = Object.assign(
       new Error(message),
       { code: 'window_not_focused' },
-      { data: { deliveredPresses: 1, phase: 'after-press' } }
+      {
+        data: {
+          deliveredPresses: 1,
+          phase: 'after-press',
+          probeNilReason: 'hit-test-miss',
+          nextSteps: ['blind retry']
+        }
+      }
     )
 
     const response = mapRuntimeError('req_1', { runtimeId: 'runtime-1' }, error)
@@ -208,6 +215,7 @@ describe('mapRuntimeError', () => {
       data: {
         deliveredPresses: 1,
         phase: 'after-press',
+        probeNilReason: 'hit-test-miss',
         nextSteps: [
           expect.stringContaining('verify whether the intended action already occurred'),
           expect.stringContaining('Do not retry the click if it already took effect')
