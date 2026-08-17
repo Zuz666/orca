@@ -17,6 +17,59 @@ export type CliResult = {
   stderr: string
 }
 
+export type CliFailure = {
+  exitCode: number | undefined
+  stdout: string
+  stderr: string
+  message: string
+}
+
+export type CliOutcome = { ok: true; result: CliResult } | { ok: false; failure: CliFailure }
+
+/**
+ * Why: execFile's error carries structured fields the flattened Error destroyed;
+ * callers must read exit output (e.g. the JSON failure envelope) without
+ * scraping the concatenated message string.
+ */
+export class CliCommandError extends Error {
+  readonly exitCode: number | undefined
+  readonly stdout: string
+  readonly stderr: string
+
+  constructor(failure: CliFailure) {
+    super(failure.message)
+    this.name = 'CliCommandError'
+    this.exitCode = failure.exitCode
+    this.stdout = failure.stdout
+    this.stderr = failure.stderr
+  }
+}
+
+/** Runs the CLI and returns a typed failure outcome instead of throwing, so
+ * drivers can inspect the JSON failure envelope (fence phase, deliveredPresses)
+ * and resolve fully-delivered presses via their own postconditions. */
+export async function runOrcaCliAllowFailure(
+  args: string[],
+  options: RunOrcaCliOptions = {}
+): Promise<CliOutcome> {
+  try {
+    return { ok: true, result: await runOrcaCli(args, options) }
+  } catch (error) {
+    if (error instanceof CliCommandError) {
+      return {
+        ok: false,
+        failure: {
+          exitCode: error.exitCode,
+          stdout: error.stdout,
+          stderr: error.stderr,
+          message: error.message
+        }
+      }
+    }
+    throw error
+  }
+}
+
 type RunOrcaCliOptions = {
   retryMissingRuntimeMetadata?: boolean
 }
@@ -56,8 +109,16 @@ async function runOrcaCliOnce(args: string[]): Promise<CliResult> {
     return { stdout: result.stdout, stderr: result.stderr }
   } catch (error) {
     if (error && typeof error === 'object' && 'stdout' in error && 'stderr' in error) {
-      const output = error as { message: string; stdout: string; stderr: string }
-      throw new Error(`${output.message}\nstdout:\n${output.stdout}\nstderr:\n${output.stderr}`)
+      const stdout = typeof error.stdout === 'string' ? error.stdout : ''
+      const stderr = typeof error.stderr === 'string' ? error.stderr : ''
+      const execMessage = error instanceof Error ? error.message : String(error)
+      const exitCode = 'code' in error && typeof error.code === 'number' ? error.code : undefined
+      throw new CliCommandError({
+        exitCode,
+        stdout,
+        stderr,
+        message: `${execMessage}\nstdout:\n${stdout}\nstderr:\n${stderr}`
+      })
     }
     throw error
   }

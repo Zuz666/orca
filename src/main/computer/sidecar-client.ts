@@ -34,7 +34,7 @@ type ComputerSidecarRequest = {
 
 type ComputerSidecarResponse =
   | { id: number; ok: true; result: unknown }
-  | { id: number; ok: false; error: { code: string; message: string } }
+  | { id: number; ok: false; error: { code: string; message: string; data?: unknown } }
 
 type PendingRequest = {
   resolve: (value: unknown) => void
@@ -254,7 +254,9 @@ class ComputerSidecarProcess {
       pending.resolve(message.result)
       return
     }
-    pending.reject(new RuntimeClientError(message.error.code, message.error.message))
+    pending.reject(
+      new RuntimeClientError(message.error.code, message.error.message, message.error.data)
+    )
   }
 
   private handleExit(

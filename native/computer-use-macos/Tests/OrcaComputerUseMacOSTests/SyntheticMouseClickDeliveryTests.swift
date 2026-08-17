@@ -90,7 +90,7 @@ final class SyntheticMouseClickDeliveryTests: XCTestCase {
         ) { error in
             XCTAssertEqual(
                 error as? SyntheticMouseClickDelivery.FenceFailure,
-                .recipientChanged(expected: target, actual: intruder, deliveredPresses: 0)
+                .recipientChanged(expected: target, actual: intruder, deliveredPresses: 0, phase: .beforePress)
             )
         }
         XCTAssertEqual(posted, [.move])
@@ -156,7 +156,12 @@ final class SyntheticMouseClickDeliveryTests: XCTestCase {
         ) { error in
             XCTAssertEqual(
                 error as? SyntheticMouseClickDelivery.FenceFailure,
-                .recipientChanged(expected: target, actual: intruder, deliveredPresses: 1)
+                .recipientChanged(
+                    expected: target,
+                    actual: intruder,
+                    deliveredPresses: 1,
+                    phase: .afterPress
+                )
             )
         }
         XCTAssertEqual(posted, [.move, .buttonDown(pressIndex: 1), .buttonUp(pressIndex: 1)])
@@ -212,7 +217,12 @@ final class SyntheticMouseClickDeliveryTests: XCTestCase {
         ) { error in
             XCTAssertEqual(
                 error as? SyntheticMouseClickDelivery.FenceFailure,
-                .recipientChanged(expected: target, actual: intruder, deliveredPresses: 1)
+                .recipientChanged(
+                    expected: target,
+                    actual: intruder,
+                    deliveredPresses: 1,
+                    phase: .beforePress
+                )
             )
         }
         XCTAssertEqual(posted, [
@@ -319,5 +329,46 @@ final class SyntheticMouseClickDeliveryTests: XCTestCase {
             pause: { _ in }
         ))
         XCTAssertEqual(posted, [.move])
+    }
+
+    func testEqualDeliveredPressesDistinguishBeforePressFromAfterPress() {
+        // Why: after-up of press 1 and before-down of press 2 both report
+        // deliveredPresses == 1; only the phase tells a caller whether the
+        // full press landed (verify postcondition) or nothing new posted.
+        let target = SyntheticMouseClickDelivery.Recipient(ownerPID: 41, windowID: 101)
+        let intruder = SyntheticMouseClickDelivery.Recipient(ownerPID: 52, windowID: 202)
+
+        var afterUpRecipients = [target, intruder]
+        XCTAssertThrowsError(
+            try SyntheticMouseClickDelivery.deliver(
+                clickCount: 1,
+                target: target,
+                currentRecipient: { afterUpRecipients.removeFirst() },
+                makeEvent: { $0 },
+                post: { _ in },
+                pause: { _ in }
+            )
+        ) { error in
+            XCTAssertEqual(
+                (error as? SyntheticMouseClickDelivery.FenceFailure)?.phase,
+                .afterPress
+            )
+        }
+
+        var beforePressRecipients = [target, target, intruder]
+        XCTAssertThrowsError(
+            try SyntheticMouseClickDelivery.deliver(
+                clickCount: 2,
+                target: target,
+                currentRecipient: { beforePressRecipients.removeFirst() },
+                makeEvent: { $0 },
+                post: { _ in },
+                pause: { _ in }
+            )
+        ) { error in
+            let failure = error as? SyntheticMouseClickDelivery.FenceFailure
+            XCTAssertEqual(failure?.deliveredPresses, 1)
+            XCTAssertEqual(failure?.phase, .beforePress)
+        }
     }
 }

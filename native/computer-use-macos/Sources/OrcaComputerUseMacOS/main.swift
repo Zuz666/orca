@@ -59,21 +59,24 @@ enum JSONValue: Decodable {
     }
 }
 
-enum ProviderError: Error {
-    case coded(String, String)
+// Why a concrete struct: [String: Any] cannot be stored on a Sendable error;
+// the JSON object form is built only at serialization time.
+struct FenceErrorData: Sendable {
+    let deliveredPresses: Int
+    let phase: String
 
-    var code: String {
-        switch self {
-        case let .coded(code, _):
-            return code
-        }
+    var jsonObject: [String: Any] {
+        ["deliveredPresses": deliveredPresses, "phase": phase]
     }
+}
 
-    var message: String {
-        switch self {
-        case let .coded(_, message):
-            return message
-        }
+struct ProviderError: Error {
+    let code: String
+    let message: String
+    var data: FenceErrorData?
+
+    static func coded(_ code: String, _ message: String, data: FenceErrorData? = nil) -> ProviderError {
+        ProviderError(code: code, message: message, data: data)
     }
 }
 
@@ -2608,7 +2611,7 @@ private enum Input {
             )
         } catch let failure as SyntheticMouseClickDelivery.FenceFailure {
             switch failure {
-            case let .recipientChanged(expected, actual, deliveredPresses):
+            case let .recipientChanged(expected, actual, deliveredPresses, phase):
                 let actualDescription = actual.map {
                     "pid \($0.ownerPID) window \($0.windowID)"
                 } ?? "no focused window"
@@ -2617,7 +2620,11 @@ private enum Input {
                     : "\(deliveredPresses) press(es) may already have been delivered; run get-app-state and verify state before retrying"
                 throw ProviderError.coded(
                     "window_not_focused",
-                    "coordinate click aborted because target pid \(expected.ownerPID) window \(expected.windowID) is no longer the focused topmost recipient (current: \(actualDescription)); \(recovery)"
+                    "coordinate click aborted because target pid \(expected.ownerPID) window \(expected.windowID) is no longer the focused topmost recipient (current: \(actualDescription)); \(recovery)",
+                    data: FenceErrorData(
+                        deliveredPresses: deliveredPresses,
+                        phase: phase == .beforePress ? "before-press" : "after-press"
+                    )
                 )
             }
         }
@@ -4217,7 +4224,11 @@ private func handleRequest(
         let result = try provider.handle(method: request.method, params: request.params ?? [:])
         return ["id": request.id, "ok": true, "result": result]
     } catch let error as ProviderError {
-        return ["id": request.id, "ok": false, "error": ["code": error.code, "message": error.message]]
+        var errorPayload: [String: Any] = ["code": error.code, "message": error.message]
+        if let data = error.data {
+            errorPayload["data"] = data.jsonObject
+        }
+        return ["id": request.id, "ok": false, "error": errorPayload]
     } catch {
         return ["id": request.id, "ok": false, "error": ["code": "accessibility_error", "message": String(describing: error)]]
     }

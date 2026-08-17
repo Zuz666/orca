@@ -29,8 +29,32 @@ public enum SyntheticMouseClickDelivery {
         }
     }
 
+    /// Which fence sample observed the recipient change; callers cannot
+    /// distinguish before-down from after-up via deliveredPresses alone.
+    public enum FencePhase: Equatable, Sendable {
+        case beforePress
+        case afterPress
+    }
+
     public enum FenceFailure: Error, Equatable {
-        case recipientChanged(expected: Recipient, actual: Recipient?, deliveredPresses: Int)
+        case recipientChanged(
+            expected: Recipient,
+            actual: Recipient?,
+            deliveredPresses: Int,
+            phase: FencePhase
+        )
+
+        public var deliveredPresses: Int {
+            switch self {
+            case let .recipientChanged(_, _, presses, _): presses
+            }
+        }
+
+        public var phase: FencePhase {
+            switch self {
+            case let .recipientChanged(_, _, _, phase): phase
+            }
+        }
     }
 
     public enum Step: Equatable {
@@ -94,7 +118,8 @@ public enum SyntheticMouseClickDelivery {
                 throw FenceFailure.recipientChanged(
                     expected: target,
                     actual: beforeDown.recipient,
-                    deliveredPresses: pressIndex - 1
+                    deliveredPresses: pressIndex - 1,
+                    phase: .beforePress
                 )
             }
             let down = try makeEvent(.buttonDown(pressIndex: pressIndex))
@@ -109,7 +134,8 @@ public enum SyntheticMouseClickDelivery {
                 throw FenceFailure.recipientChanged(
                     expected: target,
                     actual: afterUp.recipient,
-                    deliveredPresses: pressIndex
+                    deliveredPresses: pressIndex,
+                    phase: .afterPress
                 )
             }
             pause(interEventPauseMicroseconds)

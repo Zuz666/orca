@@ -2,7 +2,12 @@ import type {
   ComputerActionResult,
   ComputerSnapshotResult
 } from '../../../src/shared/runtime-types'
-import { parseJsonOutput, runOrcaCli } from './computer-driver'
+import {
+  CliCommandError,
+  parseJsonOutput,
+  runOrcaCli,
+  runOrcaCliAllowFailure
+} from './computer-cli-driver'
 
 export async function doubleClickTextEditWord(): Promise<{
   action: ComputerActionResult['action']
@@ -101,31 +106,64 @@ export async function clickCapturedTextEditOpenDialog(): Promise<{
     ).stdout
   )
   const dialog = opened.result.snapshot.window
-  const clicked = parseJsonOutput<{ result: ComputerActionResult }>(
-    (
-      await runOrcaCli([
-        'computer',
-        'click',
-        '--app',
-        'TextEdit',
-        '--window-id',
-        String(dialog.id),
-        '--x',
-        String(dialog.width - 140),
-        '--y',
-        String(dialog.height - 30),
-        '--no-screenshot',
-        '--json'
-      ])
-    ).stdout
-  )
+  const clickOutcome = await runOrcaCliAllowFailure([
+    'computer',
+    'click',
+    '--app',
+    'TextEdit',
+    '--window-id',
+    String(dialog.id),
+    '--x',
+    String(dialog.width - 140),
+    '--y',
+    String(dialog.height - 30),
+    '--no-screenshot',
+    '--json'
+  ])
+  let clickPath: string | undefined
+  if (clickOutcome.ok) {
+    clickPath = parseJsonOutput<{ result: ComputerActionResult }>(clickOutcome.result.stdout).result
+      .action?.path
+  } else if (finalPressFenceAbort(clickOutcome.failure.stdout)) {
+    // Why: a Cancel click that closes the dialog legitimately removes the
+    // focused recipient; the fence aborts only after the press was delivered,
+    // so the dialogClosed postcondition below decides the verdict.
+    clickPath = 'synthetic'
+  } else {
+    throw new CliCommandError(clickOutcome.failure)
+  }
   const after = parseJsonOutput<{
     result: { windows: { id?: number | null }[] }
   }>((await runOrcaCli(['computer', 'list-windows', '--app', 'TextEdit', '--json'])).stdout)
 
   return {
-    clickPath: clicked.result.action?.path,
+    clickPath,
     dialogClosed: !after.result.windows.some((window) => window.id === dialog.id),
     dialogWasNew: !existingWindowIds.has(dialog.id)
   }
+}
+
+type FenceAbortEnvelope = {
+  ok: false
+  error: { code: string; data?: { deliveredPresses?: unknown; phase?: unknown } }
+}
+
+// Why: only a delivered final press may resolve via the postcondition; every
+// other failure shape stays a hard error for the caller to rethrow.
+function finalPressFenceAbort(stdout: string): boolean {
+  let envelope: FenceAbortEnvelope | undefined
+  try {
+    envelope = parseJsonOutput<FenceAbortEnvelope>(stdout)
+  } catch {
+    return false
+  }
+  if (!envelope || envelope.ok !== false || envelope.error.code !== 'window_not_focused') {
+    return false
+  }
+  const data = envelope.error.data
+  return (
+    data?.phase === 'after-press' &&
+    typeof data?.deliveredPresses === 'number' &&
+    data.deliveredPresses >= 1
+  )
 }

@@ -112,6 +112,29 @@ describe('computer sidecar client', () => {
     await expect(secondCall).resolves.toEqual({ supports: { screenshots: true } })
   })
 
+  it('preserves structured error data from the sidecar child', async () => {
+    const call = callComputerSidecarCapabilities()
+    const child = children[0]!
+    const request = child.sent[0]!
+
+    const rejection = expect(call).rejects.toMatchObject({
+      name: 'RuntimeClientError',
+      code: 'window_not_focused',
+      data: { deliveredPresses: 1, phase: 'after-press' }
+    })
+    child.emit('message', {
+      id: request.id,
+      ok: false,
+      error: {
+        code: 'window_not_focused',
+        message: 'coordinate click aborted',
+        data: { deliveredPresses: 1, phase: 'after-press' }
+      }
+    })
+
+    await rejection
+  })
+
   it('starts a replacement sidecar after the active child errors', async () => {
     const firstCall = callComputerSidecarCapabilities()
     const firstRejection = expect(firstCall).rejects.toThrow('active sidecar failed')

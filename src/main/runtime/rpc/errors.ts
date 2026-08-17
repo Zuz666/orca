@@ -133,11 +133,17 @@ export function mapRuntimeError(id: string, meta: RpcEnvelopeMeta, error: unknow
   if (
     error instanceof Error &&
     'code' in error &&
-    typeof (error as { code: unknown }).code === 'string' &&
-    COMPUTER_PASSTHROUGH_CODES.has((error as { code: string }).code)
+    typeof error.code === 'string' &&
+    COMPUTER_PASSTHROUGH_CODES.has(error.code)
   ) {
-    const code = (error as { code: string }).code
-    return errorResponse(id, meta, code, message, computerErrorData(code, message))
+    const helperData = 'data' in error ? error.data : undefined
+    return errorResponse(
+      id,
+      meta,
+      error.code,
+      message,
+      computerErrorDataWithHelperDetails(error.code, message, helperData)
+    )
   }
   if (
     error instanceof Error &&
@@ -201,6 +207,22 @@ export function mapRuntimeError(id: string, meta: RpcEnvelopeMeta, error: unknow
 }
 
 export const computerErrorData = computerUseErrorRecoveryData
+
+/**
+ * Why: native helpers attach structured diagnostics (e.g. fence phase) that
+ * the static recovery map cannot know; recovery nextSteps stay authoritative.
+ */
+export function computerErrorDataWithHelperDetails(
+  code: string,
+  message: string | undefined,
+  helperData: unknown
+): Record<string, unknown> | undefined {
+  const recovery = computerErrorData(code, message)
+  if (helperData && typeof helperData === 'object') {
+    return { ...helperData, ...recovery }
+  }
+  return recovery
+}
 
 // Why: browser errors carry a structured .code property (BrowserError from
 // cdp-bridge.ts) that maps directly to agent-facing error codes. We forward
