@@ -58,40 +58,55 @@ async function exerciseMenuTrigger(page: Page, button: Locator, text: string): P
   }
 }
 
-test('compound menu buttons retain tooltip descriptions through focus, hover and remounts', async ({
-  orcaPage: page
-}) => {
-  await waitForSessionReady(page)
-  await waitForActiveWorktree(page)
-  const errors: string[] = []
-  const captureError = (error: Error): void => {
-    errors.push(error.message)
+for (const surface of [
+  {
+    name: 'source control header',
+    openButton: /^Source Control/,
+    closeButton: /^Explorer/,
+    triggerLabel: 'More source control actions',
+    tooltip: 'More source control actions'
+  },
+  {
+    name: 'commit actions',
+    openButton: /^Source Control/,
+    closeButton: /^Explorer/,
+    triggerLabel: 'More commit and remote actions',
+    tooltip: 'More commit and remote actions'
+  },
+  {
+    name: 'activity options',
+    openButton: 'View activity',
+    closeButton: 'Turn off activity view',
+    triggerLabel: 'Thread list options',
+    tooltip: 'Activity options'
   }
-  page.on('pageerror', captureError)
-  try {
-    for (let cycle = 0; cycle < 2; cycle += 1) {
-      await page.getByRole('button', { name: /^Source Control/ }).click()
-      for (const label of ['More source control actions', 'More commit and remote actions']) {
+] as const) {
+  test(`${surface.name} menu button retains tooltip descriptions through focus, hover and remounts`, async ({
+    orcaPage: page
+  }) => {
+    await waitForSessionReady(page)
+    await waitForActiveWorktree(page)
+    const errors: string[] = []
+    const captureError = (error: Error): void => {
+      errors.push(error.message)
+    }
+    page.on('pageerror', captureError)
+    try {
+      for (let cycle = 0; cycle < 2; cycle += 1) {
+        await page.getByRole('button', { name: surface.openButton, exact: true }).click()
         await exerciseMenuTrigger(
           page,
-          page.getByRole('button', { name: label, exact: true }),
-          label
+          page.getByRole('button', { name: surface.triggerLabel, exact: true }),
+          surface.tooltip
         )
+        await page.getByRole('button', { name: surface.closeButton, exact: true }).click()
+        await expect(
+          page.getByRole('button', { name: surface.triggerLabel, exact: true })
+        ).toHaveCount(0)
+        expect(errors).toEqual([])
       }
-      await page.getByRole('button', { name: /^Explorer/ }).click()
-      await expect(page.getByRole('button', { name: 'More source control actions' })).toHaveCount(0)
-
-      await page.getByRole('button', { name: 'View activity', exact: true }).click()
-      await exerciseMenuTrigger(
-        page,
-        page.getByRole('button', { name: 'Thread list options', exact: true }),
-        'Activity options'
-      )
-      await page.getByRole('button', { name: 'Turn off activity view', exact: true }).click()
-      await expect(page.getByRole('button', { name: 'Thread list options' })).toHaveCount(0)
-      expect(errors).toEqual([])
+    } finally {
+      page.off('pageerror', captureError)
     }
-  } finally {
-    page.off('pageerror', captureError)
-  }
-})
+  })
+}
